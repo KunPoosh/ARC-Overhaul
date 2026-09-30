@@ -3,6 +3,6 @@
   "minVersion": "0.8",
   "package": "net.poosh.arc.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["WorldMapMixin", "WorldMapAccess", "TownPlacementMixin", "RitualSitesMixin", "GameSetupMixin", "FleetAssignmentMixin", "AircraftStrafeMixin", "ShipSpeedReportMixin", "ModuleGroundFrictionMixin", "LegGroundFrictionMixin"],
+  "mixins": ["WorldMapMixin", "WorldMapAccess", "TownPlacementMixin", "RitualSitesMixin", "GameSetupMixin", "FleetAssignmentMixin", "AircraftStrafeMixin", "ShipSpeedReportMixin", "ModuleGroundFrictionMixin", "LegGroundFrictionMixin", "OrderedTargetWeaponMixin", "OrderedTargetAircraftMixin", "OrderedTargetCommandMixin", "OrderedTargetButtonMixin"],
   "injectors": {"defaultRequire": 1}
 }

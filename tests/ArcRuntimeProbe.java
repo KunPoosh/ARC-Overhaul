@@ -3,6 +3,7 @@ package regression;
 
 import com.zarkonnen.airships.*;
 import com.zarkonnen.catengine.util.Utils;
+import net.poosh.arc.combat.OrderedTarget;
 import net.poosh.arc.conquest.*;
 import net.poosh.arc.mixin.*;
 import net.poosh.arc.speed.*;
@@ -10,6 +11,7 @@ import net.fabricacs.api.rules.SharedRules;
 import net.fabricacs.api.config.*;
 import net.fabricacs.api.ui.*;
 import org.json.*;
+import org.objectweb.asm.*;
 import java.lang.reflect.*;
 import java.nio.file.*;
 import java.util.*;
@@ -25,6 +27,19 @@ public final class ArcRuntimeProbe {
     }
     static Object field(Object object, Class<?> type, String name) throws Exception { Field f=type.getDeclaredField(name);f.setAccessible(true);return f.get(object); }
     static void set(Object object, Class<?> type, String name, Object value) throws Exception { Field f=type.getDeclaredField(name);f.setAccessible(true);f.set(object,value); }
+    static sun.misc.Unsafe theUnsafe() throws Exception {
+        Field field = sun.misc.Unsafe.class.getDeclaredField("theUnsafe"); field.setAccessible(true);
+        return (sun.misc.Unsafe)field.get(null);
+    }
+    /** final 字段（如 {@code Airship.currentBonuses}、{@code CrewType.canFly}）只能用 Unsafe 写。 */
+    static void putObject(Object object, Class<?> type, String name, Object value) throws Exception {
+        sun.misc.Unsafe unsafe=theUnsafe();
+        unsafe.putObject(object,unsafe.objectFieldOffset(type.getDeclaredField(name)),value);
+    }
+    static void putBoolean(Object object, Class<?> type, String name, boolean value) throws Exception {
+        sun.misc.Unsafe unsafe=theUnsafe();
+        unsafe.putBoolean(object,unsafe.objectFieldOffset(type.getDeclaredField(name)),value);
+    }
     static Object invoke(Object object,String name,Object...args) throws Exception {
         for(Method method:object.getClass().getDeclaredMethods()) if(method.getName().contains(name)) {
             method.setAccessible(true);try{return method.invoke(object,args);}catch(InvocationTargetException ex){throw (Exception)ex.getCause();}
@@ -711,6 +726,7 @@ public final class ArcRuntimeProbe {
         checkEffectiveSpeed();
         checkGroundLoad();
         checkAircraftStrafe();
+        checkOrderedTarget();
         checkFleetOptions();
         checkFleetWindowShape();
         checkFleetEditor();
@@ -843,5 +859,258 @@ public final class ArcRuntimeProbe {
         Field unsafeField=sun.misc.Unsafe.class.getDeclaredField("theUnsafe");unsafeField.setAccessible(true);
         sun.misc.Unsafe u=(sun.misc.Unsafe)unsafeField.get(null);
         u.putObject(target,u.objectFieldOffset(type.getDeclaredField(name)),value);
+    }
+    /** 按出现顺序记录某方法里的字段读取（{@code F owner.name}）与方法调用（{@code M owner.name+desc}）。 */
+    static List<String> events(Class<?> type,String method,String descriptor) throws Exception {
+        List<String> out=new ArrayList<>();
+        String resource="/"+type.getName().replace('.','/')+".class";
+        byte[] bytes;
+        try(java.io.InputStream in=type.getResourceAsStream(resource)) {
+            check(in!=null,type.getName()+" class file is readable from the game archive");
+            bytes=in.readAllBytes();
+        }
+        new ClassReader(bytes).accept(new ClassVisitor(Opcodes.ASM9){
+            @Override public MethodVisitor visitMethod(int access,String name,String desc,String signature,String[] exceptions) {
+                if(!name.equals(method)||!desc.equals(descriptor)) return null;
+                return new MethodVisitor(Opcodes.ASM9){
+                    @Override public void visitFieldInsn(int opcode,String owner,String fieldName,String fieldDesc) {
+                        if(opcode==Opcodes.GETFIELD) out.add("F "+owner+"."+fieldName);
+                    }
+                    @Override public void visitMethodInsn(int opcode,String owner,String name,String desc,boolean itf) {
+                        out.add("M "+owner+"."+name+desc);
+                    }
+                };
+            }
+        },0);
+        check(!out.isEmpty(),"native "+type.getSimpleName()+"."+method+" bytecode is parsed from the class file");
+        return out;
+    }
+    static List<Integer> sitesOf(List<String> events,String event) {
+        List<Integer> sites=new ArrayList<>();
+        for(int i=0;i<events.size();i++) if(events.get(i).equals(event)) sites.add(i);
+        return sites;
+    }
+    /** 判定位之前最近的一次字段读取——「这次 getfield dangerCache 读的是谁」。 */
+    static String fieldBefore(List<String> events,int site) {
+        for(int at=site-1;at>=0;at--) if(events.get(at).startsWith("F ")) return events.get(at);
+        return null;
+    }
+    /** 按名字后缀与参数表找注入处理器；Mixin 会在前面加上 redirect$/inject$ 之类的修饰。 */
+    static Method handler(Class<?> type,String suffix,Class<?>... parameters) {
+        for(Method m:type.getDeclaredMethods())
+            if(m.getName().endsWith(suffix)&&Arrays.equals(m.getParameterTypes(),parameters)){m.setAccessible(true);return m;}
+        return null;
+    }
+    static String names(Class<?> type,Class<?>... parameters) {
+        StringBuilder out=new StringBuilder();
+        for(Method m:type.getDeclaredMethods())
+            if(Arrays.equals(m.getParameterTypes(),parameters)) out.append(m.getName()).append(' ');
+        return out.toString();
+    }
+    static Airship stubShip(boolean shoots,boolean carries,boolean ready) throws Exception {
+        StubShip ship=(StubShip)unsafe(StubShip.class);
+        ship.shoots=shoots;ship.carries=carries;ship.ready=ready;
+        // modules 必须非 null：canOrder() 的第三项走原版 Airship.hasFlyers()，真船永远有这块列表。
+        ship.modules=new ArrayList<>();
+        return ship;
+    }
+    /**
+     * T 指令打无武装目标 / explicit attack orders on defenceless targets.
+     *
+     * <p>三段：① 四个处理器确实落在真实内核类上；② 对着发行内核字节码断言四个 {@code ordinal}
+     * 指的正是带着 fireAt / prevTargetShip / attackTarget / TARGET 的那一处读取或调用；
+     * ③ 直接调用处理器，验证「被 T 点名的无武装目标才算有效、没人点名的照旧是 0」。</p>
+     *
+     * <p>不启动战斗：处理器只读 {@code dangerCache}、{@code fireAt}、{@code poppedOutOfTile}
+     * 这几个字段，用 Unsafe 造对象、把字段直接写进去就能验证判定。被改写的原版选目标循环
+     * （舰炮真正开火、舰载机飞攻击航线）需要一场真实战斗，见 TESTING 的未覆盖说明。</p>
+     */
+    static void checkOrderedTarget() throws Exception {
+        Class<?> module=Class.forName("com.zarkonnen.airships.Module");
+        Class<?> crewman=Class.forName("com.zarkonnen.airships.Crewman");
+        Class<?> tool=Class.forName("com.zarkonnen.airships.TargetCommandTool");
+        Class<?> panel=Class.forName("com.zarkonnen.airships.CommandButtonsPanel");
+        Class<?> drawType=Class.forName("com.zarkonnen.airships.MyDraw");
+        Class<?> imgType=Class.forName("com.zarkonnen.catengine.Img");
+        // ① 处理器落在真实内核类上（名字会被 Mixin 修饰，因此按后缀 + 参数表定位）。
+        Method weaponOrdered=handler(module,"arc$orderedTargetIsWorthShooting",Airship.class);
+        Method weaponAim=handler(module,"arc$orderedTargetKeepsAim",Airship.class);
+        Method aircraftKeep=handler(crewman,"arc$keepOrderedTarget",Airship.class);
+        Method aircraftOrdered=handler(crewman,"arc$orderedTargetIsWorthShooting",Airship.class);
+        Method commandOrder=handler(tool,"arc$canOrderTarget",Airship.class);
+        Method buttonEnable=handler(panel,"arc$enableTargetButton",drawType,int.class,int.class,imgType,Runnable.class,boolean.class);
+        Method buttonScreen=handler(panel,"arc$rememberScreen",drawType,com.zarkonnen.catengine.util.Pt.class,
+            com.zarkonnen.catengine.util.ScreenMode.class,com.zarkonnen.catengine.Hooks.class,UniScreen.class,
+            org.spongepowered.asm.mixin.injection.callback.CallbackInfo.class);
+        System.out.println("ARC ordered-target handlers on Module: "+names(module,Airship.class));
+        System.out.println("ARC ordered-target handlers on Crewman: "+names(crewman,Airship.class));
+        check(weaponOrdered!=null&&weaponAim!=null,"real mixin transformation: Module carries both ARC weapon-order handlers");
+        check(aircraftKeep!=null&&aircraftOrdered!=null,"real mixin transformation: Crewman carries both ARC aircraft-order handlers");
+        check(commandOrder!=null,"real mixin transformation: TargetCommandTool carries the ARC order-eligibility handler");
+        check(buttonEnable!=null&&buttonScreen!=null,"real mixin transformation: CommandButtonsPanel carries the ARC T-button handlers");
+        // ② 落点：ordinal 必须指向带着 fireAt / prevTargetShip / attackTarget / TARGET 的那一处。
+        String danger="F com/zarkonnen/airships/Airship.dangerCache",fireAt="F com/zarkonnen/airships/Airship.fireAt";
+        List<String> targetShip=events(module,"targetShip","(Lcom/zarkonnen/airships/Combat;)Lcom/zarkonnen/airships/Airship;");
+        List<Integer> shipSites=sitesOf(targetShip,danger);
+        check(shipSites.size()==4,"native Module.targetShip reads dangerCache four times ("+shipSites.size()+")");
+        check(fireAt.equals(fieldBefore(targetShip,shipSites.get(1))),
+            "dangerCache read #1 in targetShip is the explicit-order check, matching the injected ordinal=1");
+        List<String> target=events(module,"target","(Lcom/zarkonnen/airships/Combat;DD)Lcom/zarkonnen/catengine/util/Utils$Pair;");
+        List<Integer> targetSites=sitesOf(target,danger);
+        check(targetSites.size()==3,"native Module.target reads dangerCache three times ("+targetSites.size()+")");
+        check("F com/zarkonnen/airships/Module.prevTargetShip".equals(fieldBefore(target,targetSites.get(0))),
+            "dangerCache read #0 in target is the retained-aim check, matching the injected ordinal=0");
+        List<String> shooting=events(crewman,"outsideShootingTick","(ILcom/zarkonnen/airships/Combat;Lcom/zarkonnen/airships/Combat$Side;Z)V");
+        List<Integer> shootingSites=sitesOf(shooting,danger);
+        check(shootingSites.size()==3,"native Crewman.outsideShootingTick reads dangerCache three times ("+shootingSites.size()+")");
+        check("F com/zarkonnen/airships/Crewman.attackTarget".equals(fieldBefore(shooting,shootingSites.get(0))),
+            "dangerCache read #0 in outsideShootingTick clears the current target, matching the injected ordinal=0");
+        check(fireAt.equals(fieldBefore(shooting,shootingSites.get(1))),
+            "dangerCache read #1 in outsideShootingTick inherits the carrier order, matching the injected ordinal=1");
+        List<String> click=events(tool,"click","(Lcom/zarkonnen/catengine/Input;Lcom/zarkonnen/catengine/util/Pt;Lcom/zarkonnen/catengine/util/ScreenMode;Lcom/zarkonnen/airships/UniScreen;)Z");
+        check(sitesOf(click,"M com/zarkonnen/airships/Airship.canShoot()Z").size()==1,
+            "native TargetCommandTool.click calls canShoot exactly once, so the redirect is unambiguous");
+        List<String> panelDraw=events(panel,"draw","(Lcom/zarkonnen/airships/MyDraw;Lcom/zarkonnen/catengine/util/Pt;Lcom/zarkonnen/catengine/util/ScreenMode;Lcom/zarkonnen/catengine/Hooks;Lcom/zarkonnen/airships/UniScreen;)V");
+        List<Integer> plainButtons=sitesOf(panelDraw,"M com/zarkonnen/airships/MyDraw.iconButton(IILcom/zarkonnen/catengine/Img;Ljava/lang/Runnable;Z)V");
+        check(plainButtons.size()==15,"native CommandButtonsPanel.draw draws fifteen plain icon buttons ("+plainButtons.size()+")");
+        int targetButton=-1;
+        for(int index=0;index<plainButtons.size();index++)
+            if("F com/zarkonnen/airships/CommandButtonsPanel.TARGET".equals(fieldBefore(panelDraw,plainButtons.get(index))))
+                targetButton=index;
+        check(targetButton==12,"the T button is plain iconButton call site #12, matching the injected ordinal=12 ("+targetButton+")");
+        // ③ 行为：判定规则本身。
+        Airship enemy=(Airship)unsafe(Airship.class),bystander=(Airship)unsafe(Airship.class);
+        enemy.dangerCache=0.0;bystander.dangerCache=0.0;
+        check(OrderedTarget.visibleDanger(enemy,enemy)>0.0,"an ordered target counts as worth shooting even with dangerCache 0");
+        check(OrderedTarget.visibleDanger(bystander,enemy)==0.0,"an unarmed target nobody ordered stays worthless");
+        check(OrderedTarget.visibleDanger(null,enemy)==0.0,"no target reads as zero danger");
+        enemy.dangerCache=7.0;
+        check(OrderedTarget.visibleDanger(enemy,null)==7.0,"a dangerous target keeps its real danger value");
+        enemy.dangerCache=0.0;
+        // ③ 行为：舰炮（Module）。
+        com.zarkonnen.airships.Module weapon=(com.zarkonnen.airships.Module)unsafe(module);
+        Airship shooter=(Airship)unsafe(Airship.class);
+        weapon.ship=shooter;shooter.fireAt=enemy;
+        check((Double)weaponOrdered.invoke(weapon,enemy)>0.0,"a T-ordered unarmed target passes the weapon's worth-shooting check");
+        check((Double)weaponOrdered.invoke(weapon,bystander)==0.0,"a weapon still refuses an unarmed target it was not ordered to hit");
+        check((Double)weaponAim.invoke(weapon,enemy)>0.0,"a weapon keeps its aim point on the ordered unarmed target");
+        check((Double)weaponAim.invoke(weapon,bystander)==0.0,"a weapon still drops an unarmed target it was not ordered to hit");
+        shooter.fireAt=null;
+        check((Double)weaponOrdered.invoke(weapon,enemy)==0.0,"without an order the native danger rule stands");
+        // ③ 行为：舰载机继承母舰指令（Crewman）。
+        Crewman plane=(Crewman)unsafe(crewman);
+        Tile hangar=(Tile)unsafe(Tile.class);
+        Airship carrier=(Airship)unsafe(Airship.class);
+        hangar.ship=carrier;plane.poppedOutOfTile=hangar;carrier.fireAt=enemy;
+        check((Double)aircraftOrdered.invoke(plane,enemy)>0.0,"a launched aircraft accepts the carrier's ordered unarmed target");
+        check((Double)aircraftKeep.invoke(plane,enemy)>0.0,"the aircraft keeps that target while the carrier still orders it");
+        check((Double)aircraftOrdered.invoke(plane,bystander)==0.0,"an aircraft does not pick up an unarmed target on its own");
+        check((Double)aircraftKeep.invoke(plane,bystander)==0.0,"an unarmed target nobody ordered is still cleared");
+        carrier.fireAt=null;
+        check((Double)aircraftKeep.invoke(plane,enemy)==0.0,"without a carrier order the native danger rule stands");
+        plane.poppedOutOfTile=null;
+        check((Double)aircraftOrdered.invoke(plane,enemy)==0.0,"a docked aircraft has no carrier order to inherit");
+        // ③ 行为：谁可以接受 T 指令。
+        TargetCommandTool orderTool=(TargetCommandTool)unsafe(tool);
+        check((Boolean)commandOrder.invoke(orderTool,stubShip(true,false,true)),"a ship with weapons can be given a T order");
+        check((Boolean)commandOrder.invoke(orderTool,stubShip(false,true,true)),"an unarmed aircraft carrier with a flight centre can be given a T order");
+        check(!(Boolean)commandOrder.invoke(orderTool,stubShip(false,false,true)),"a plain unarmed transport still cannot");
+        // 只带机库的航母必须走原版 hasFlyers()：游戏数据里只有 FLIGHT_CENTRE 有 canGivePlaneCommands，
+        // 机库（BOMBER_HANGAR 等）只声明 quartersType（机组的 CrewType.canFly 为真）。这里用合成的
+        // 模块/机组数据造一条真实判定链，确认 ARC 认定它「能把指令交给舰载机」。
+        CrewType bomber=(CrewType)unsafe(CrewType.class);
+        putBoolean(bomber,CrewType.class,"canFly",true);
+        ModuleType hangarType=(ModuleType)unsafe(ModuleType.class);
+        set(hangarType,ModuleType.class,"quartersType",BonusableValue.of(bomber));
+        set(hangarType,ModuleType.class,"canGivePlaneCommands",BonusableValue.of(Boolean.FALSE));
+        com.zarkonnen.airships.Module hangarModule=module(hangarType);
+        hangarModule.hp=100;
+        HangarShip hangarCarrier=(HangarShip)unsafe(HangarShip.class);
+        hangarCarrier.shoots=false;hangarCarrier.ready=true;
+        hangarCarrier.modules=new ArrayList<>(List.of(hangarModule));
+        putObject(hangarCarrier,Airship.class,"currentBonuses",BonusSet.empty());
+        check(!hangarCarrier.canShoot()&&!hangarCarrier.canGiveAircraftCommands()&&hangarCarrier.hasFlyers(),
+            "a hangar-only carrier has no guns and no flight centre, yet the native aircrew test sees its planes");
+        check((Boolean)commandOrder.invoke(orderTool,hangarCarrier),"an unarmed hangar-only carrier can be given a T order too");
+        HangarShip freighter=(HangarShip)unsafe(HangarShip.class);
+        freighter.shoots=false;freighter.ready=true;
+        freighter.modules=new ArrayList<>();
+        putObject(freighter,Airship.class,"currentBonuses",BonusSet.empty());
+        check(!(Boolean)commandOrder.invoke(orderTool,freighter),
+            "a ship with neither guns nor aircrew still cannot, through the native checks as well");
+        check(OrderedTarget.anyReadyToOrder(hangarCarrier,List.of()),"the T button lights up for a single ready hangar-only carrier");
+        check(OrderedTarget.anyReadyToOrder(stubShip(false,true,true),List.of()),"the T button lights up for a single ready carrier");
+        check(OrderedTarget.anyReadyToOrder(null,List.of(stubShip(false,true,true))),"the T button lights up for a ready carrier in a multi-selection");
+        check(OrderedTarget.anyReadyToOrder(null,List.of(hangarCarrier)),"the T button lights up for a hangar-only carrier in a multi-selection");
+        check(!OrderedTarget.anyReadyToOrder(null,List.of(stubShip(false,true,false))),"a cooling-down carrier does not light the T button");
+        check(!OrderedTarget.anyReadyToOrder(null,List.of(stubShip(false,false,true))),"a transport with neither guns nor aircraft never lights it");
+        check(!OrderedTarget.anyReadyToOrder(null,List.of(freighter)),"a freighter with no aircrew never lights it either");
+        // ③ 行为：T 按钮改写使能条件（只认 TARGET 图标）。
+        // 面板真构造函数只是 new 出一堆 Img 坐标，不碰资源，因此这里用真实例，TARGET 也就是真图标。
+        Object panelInstance=new CommandButtonsPanel();
+        Field screenField=null;
+        for(Field f:panel.getDeclaredFields()) if(f.getName().contains("arc$screen")) screenField=f;
+        check(screenField!=null,"the button mixin added its screen field to the real panel class");
+        screenField.setAccessible(true);
+        com.zarkonnen.catengine.Img targetIcon=(com.zarkonnen.catengine.Img)field(panelInstance,panel,"TARGET");
+        com.zarkonnen.catengine.Img otherIcon=(com.zarkonnen.catengine.Img)field(panelInstance,panel,"TETHER");
+        ProbeDraw draw=(ProbeDraw)unsafe(ProbeDraw.class);
+        buttonEnable.invoke(panelInstance,draw,0,0,targetIcon,null,false);
+        check(draw.called&&!draw.enabled,"without a screen the T button keeps the native enabled flag");
+        UniScreen screen=(UniScreen)unsafe(UniScreen.class);
+        screen.selectedShips=new ArrayList<>();
+        screenField.set(panelInstance,screen);
+        screen.selectedShip=stubShip(false,true,true);
+        buttonEnable.invoke(panelInstance,draw,0,0,targetIcon,null,false);
+        check(draw.enabled,"an unarmed carrier makes the T button usable");
+        screen.selectedShip=hangarCarrier;
+        buttonEnable.invoke(panelInstance,draw,0,0,targetIcon,null,false);
+        check(draw.enabled,"a hangar-only carrier makes the T button usable as well");
+        screen.selectedShip=stubShip(false,true,true);
+        buttonEnable.invoke(panelInstance,draw,0,0,otherIcon,null,false);
+        check(!draw.enabled,"any other icon is forwarded with its own enabled flag");
+        buttonEnable.invoke(panelInstance,draw,0,0,targetIcon,null,true);
+        check(draw.enabled,"an already enabled T button is never disabled by ARC");
+        screen.selectedShip=stubShip(false,false,true);
+        buttonEnable.invoke(panelInstance,draw,0,0,targetIcon,null,false);
+        check(!draw.enabled,"a transport with neither guns nor aircraft keeps the native flag");
+        screen.selectedShip=null;
+        screen.selectedShips.add(stubShip(true,false,true));
+        buttonEnable.invoke(panelInstance,draw,0,0,targetIcon,null,true);
+        check(draw.enabled,"an armed ship in a multi-selection keeps whatever flag the native condition produced");
+        screen.selectedShips.clear();
+        screen.selectedShips.add(stubShip(true,false,false));
+        buttonEnable.invoke(panelInstance,draw,0,0,targetIcon,null,false);
+        check(!draw.enabled,"a cooling-down armed ship never gains the flag from ARC either");
+        screen.selectedShips.clear();
+        screen.selectedShips.add(stubShip(false,true,true));
+        buttonEnable.invoke(panelInstance,draw,0,0,targetIcon,null,false);
+        check(draw.enabled,"a carrier inside a multi-selection makes the T button usable");
+    }
+    /** 覆写 {@code canShoot}/{@code canGiveAircraftCommands}/{@code readyForCommand} 的测试替身。 */
+    static class StubShip extends Airship {
+        boolean shoots,carries,ready;
+        StubShip(){ super((ShipType)null); }
+        @Override public boolean canShoot(){ return shoots; }
+        @Override public boolean canGiveAircraftCommands(){ return carries; }
+        @Override public boolean readyForCommand(){ return ready; }
+    }
+    /**
+     * 只覆写 {@code canShoot}/{@code readyForCommand}：好让 {@code canGiveAircraftCommands()} 与
+     * {@code hasFlyers()} 走原版实现，用来验证「只带机库的航母」这条真实判定链。
+     */
+    static class HangarShip extends Airship {
+        boolean shoots,ready;
+        HangarShip(){ super((ShipType)null); }
+        @Override public boolean canShoot(){ return shoots; }
+        @Override public boolean readyForCommand(){ return ready; }
+    }
+    /** 只记录 {@code iconButton} 被调用时的使能标记；实例由 Unsafe 分配，不走进原版绘制。 */
+    static class ProbeDraw extends MyDraw {
+        boolean called,enabled;
+        ProbeDraw(){ super((com.zarkonnen.catengine.Frame)null,(MyDraw.State)null,(Integration)null); }
+        @Override public void iconButton(int x,int y,com.zarkonnen.catengine.Img img,Runnable action,boolean on){
+            called=true;enabled=on;
+        }
     }
 }

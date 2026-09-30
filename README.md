@@ -2,11 +2,11 @@
 
 [中文](README.zh-CN.md)
 
-A standalone gameplay MOD, separate from Acbric. **0.1.0-dev.7** implements starting cities, towns, cash and research points for **human empires only**, plus full control over **which AI fleets appear on the map**. AI starting counts and cash rules remain vanilla, although changes in placement and random draws can alter AI positions and asset combinations for the same seed.
+A standalone gameplay MOD, separate from Acbric. **0.1.0-dev.9** implements starting cities, towns, cash and research points for **human empires only**, plus full control over **which AI fleets appear on the map** and **T orders that can name defenceless targets**. AI starting counts and cash rules remain vanilla, although changes in placement and random draws can alter AI positions and asset combinations for the same seed.
 
 ## Use
 
-Requires Acbric API **0.3.3-dev.21 or a later compatible version** and Java 21. Exit the game and place `build/libs/ARC-Overhaul-0.1.0-dev.7.jar` in its `game/mods/`. Disable the old `acbric-starting-cities.jar` and restart first; the MODs declare a conflict. Do not install the dev.1 scaffold or fixture JARs.
+Requires Acbric API **0.3.3-dev.21 or a later compatible version** and Java 21. Exit the game and place `build/libs/ARC-Overhaul-0.1.0-dev.9.jar` in its `game/mods/`. Disable the old `acbric-starting-cities.jar` and restart first; the MODs declare a conflict. Do not install the dev.1 scaffold or fixture JARs.
 
 Open **single-player conquest setup → scroll the settings list to the bottom → ARC Overhaul: Player starting options**, or **MOD list → ARC Overhaul → Details**. Edit, Apply, close, then start a new campaign. English/Chinese follow the game language.
 
@@ -26,6 +26,12 @@ Research points are banked into the native *unassigned* research pool (`Empire.u
 ARC-added settlements are never placed on a speck of land: the native spot finder accepts any non-water tile, so ARC re-rolls until the tile belongs to a connected landmass of at least `max(32, gridSize/4)` tiles. Retries are bounded and fall back to the last candidate, so the guard can never turn generation into a failure. Only human empires, and only when the counts are customised; AI and default settings keep the untouched native result.
 
 Aircraft keep their attack runs pointed at the target: the native strafe logic stores one world-coordinate aim point per run and discards it once the target has moved 200 px away from it, then re-picks the point purely from which side of the target the aircraft is on — so a drifting target can send the aircraft the other way mid-run, which a bomber (lowest acceleration of the five aircraft, and it must fly straight over the middle of the target to release) pays for with an entire wasted pass. ARC now translates that aim point with the target's own movement, keeping the offset constant. See [CHANGELOG](CHANGELOG.md) for the mechanism and the measurements.
+
+A T order can now name a **defenceless** target: select a ship, press T and click an enemy building or an unarmed airship, and its guns really do engage it. Vanilla writes "is this target worth shooting" as `dangerCache > 0` (`Module.targetShip`, line 1464), and an unarmed immobile building never gets any threat value from `Airship.danger()` (its `inCombat()` is false), so the order was silently dropped and the guns went back to their own automatic targets. ARC raises that value to a positive number only on the reads that judge the target the player named; automatic target selection still ranks purely by the native threat value, so ships and aircraft never pick a defenceless target on their own — someone has to name it with T. Direct control is unaffected: it aims with the reticle and never consulted `dangerCache` in the first place.
+
+The same rule makes an **unarmed carrier** able to use T: launched aircraft inherit their carrier's `fireAt` (`Crewman.outsideShootingTick`, line 2248), so "select the carrier, then T an enemy" sends its aircraft after that target. Vanilla gated that inheritance on `dangerCache > 0` too and wiped the inherited target during reloads; on top of that, a carrier inside a box selection was filtered out by `canShoot()` so the order never left the client, and the panel's T button stayed grey for a weaponless ship for the same reason.
+
+For the aircraft half of "can this ship take a T order", the flight centre alone is **not** the right test: `canGiveAircraftCommands()` is driven by `ModuleType.canGivePlaneCommands`, which only `FLIGHT_CENTRE` declares in the game's data, while the hangars (`BOMBER_HANGAR` and five more) declare only `quartersType` (whose `CrewType.canFly` is true). A carrier built from hangars without a flight centre therefore reads false there and its T button stayed grey. ARC uses the vanilla `Airship.hasFlyers()` instead so those carriers count too; a transport with neither guns nor aircraft bays is still skipped as in vanilla.
 
 Count limits are conservative. Insufficient space aborts generation instead of silently producing fewer settlements. More than 128 MiB of additional distance-array capacity is rejected; this is not a total game-memory limit.
 
@@ -68,7 +74,7 @@ Use JDK 21 and a matching Acbric API dev.21 build. See [contributor setup](CONTR
 .\gradlew.bat build -PacbricDir="D:/Development/Acbric" -PgameLibDir="D:/Games/Airships/libs"
 ```
 
-Output: `build/libs/ARC-Overhaul-0.1.0-dev.7.jar`. Replace the previous ARC JAR instead of installing both. Game, framework and test classes are not bundled. Nothing is automatically installed. `build` checks compilation/packaging; its default `test` has no sources. Run [integration tests](TESTING.md#run-isolated-checks-windows) separately with your own game inputs.
+Output: `build/libs/ARC-Overhaul-0.1.0-dev.9.jar`. Replace the previous ARC JAR instead of installing both. Game, framework and test classes are not bundled. Nothing is automatically installed. `build` checks compilation/packaging; its default `test` has no sources. Run [integration tests](TESTING.md#run-isolated-checks-windows) separately with your own game inputs.
 
 PR #1 fixes missing territory colour for extra towns, with manual confirmation from the user. Both game builds (1.2.15.2 / 1.2.14) pass 407 targeted checks each, 814 total, using API dev.25: real Fabric transformation, native placement/contiguous IDs, territory tracing, one-time cash, configuration and native disk/binary-state persistence. Arms/background/land resources use fixtures and territory tracing uses synthetic ownership grids; full map/roads/initial-assets generation, GPU and multiplayer are not comprehensively verified. See [testing](TESTING.md).
 
