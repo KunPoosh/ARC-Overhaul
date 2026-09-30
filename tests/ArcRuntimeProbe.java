@@ -709,6 +709,7 @@ public final class ArcRuntimeProbe {
         checkTerritoryIds();
         checkLandPlacement();
         checkEffectiveSpeed();
+        checkGroundLoad();
         checkAircraftStrafe();
         checkFleetOptions();
         checkFleetWindowShape();
@@ -772,5 +773,75 @@ public final class ArcRuntimeProbe {
     }
     static Leg.Spec legSpec(double friction) {
         return new Leg.Spec(false,1.5,-0.5,70,70,70,18,0,80,1000,false,new Spring(0,110,85,0.06,friction,0.005),null,null,null,null,null,null,0,0);
+    }
+
+    /**
+     * 接地载荷：悬浮石与龟甲（Shell Armour，每格 lift 35）提供的升力抵消掉的重力不该再产生摩擦。
+     *
+     * <p>无头实测（tools/arc/.work/speedprobe/SpeedProbe10，真实游戏数据）：把 Strider 的 27 格装甲全换成龟甲后
+     * 升力 945、质量 1008（升力已超过重量），可测得的接地摩擦速率仍是 0.00476，裸舰是 0.00499 ——
+     * 原版完全无视升力，速度没有任何提升，只有额外重量让舰船更慢。本注入把摩擦按载荷比例缩放：
+     * 载荷 0 时弹簧不再夺走速度，载荷 1（无升力）时返回值与原版逐位相同。</p>
+     */
+    static void checkGroundLoad() throws Exception {
+        check(GroundLoad.loadFraction(1.0,0.0)==1.0,"no lift means the whole weight rests on the ground");
+        check(GroundLoad.loadFraction(1.0,0.4)==0.6,"partial lift removes exactly its share of the ground load");
+        check(GroundLoad.loadFraction(1.0,2.0)==0.0,"lift beyond the weight cannot make the load negative");
+        check(GroundLoad.loadFraction(0.0,0.0)==1.0,"a weightless ship keeps the vanilla load fraction");
+        Method moduleHandler=null,legHandler=null;
+        StringBuilder handlers=new StringBuilder();
+        for(Method m:Class.forName("com.zarkonnen.airships.Module").getDeclaredMethods())
+            if(m.getName().contains("arc$loadScaledFriction")){moduleHandler=m;handlers.append("Module=").append(m.getName()).append(' ');}
+        for(Method m:Class.forName("com.zarkonnen.airships.Leg").getDeclaredMethods())
+            if(m.getName().contains("arc$loadScaledFriction")){legHandler=m;handlers.append("Leg=").append(m.getName()).append(' ');}
+        System.out.println("ARC ground-load handlers: "+handlers);
+        check(moduleHandler!=null,"real mixin transformation: Module carries the ARC ground-load handler");
+        check(legHandler!=null,"real mixin transformation: Leg carries the ARC ground-load handler");
+        Airship plain=liftShip(1000,0);
+        check(GroundLoad.loadFraction(plain,null)==1.0,"a spring-only landship still rests its full weight on the ground");
+        check(GroundLoad.scaleFrictionBase(1.0-0.004,GroundLoad.loadFraction(plain,null))==1.0-0.004,
+            "a ship without lift keeps the vanilla friction base bit for bit");
+        Airship turtle=liftShip(1000,20);
+        check(turtle.getLift()==700,"turtle-shell tiles contribute their native lift ("+turtle.getLift()+")");
+        check(GroundLoad.loadFraction(turtle,null)==0.0,"lift above the weight takes the landship off its springs");
+        check(GroundLoad.scaleFrictionBase(1.0-0.004,GroundLoad.loadFraction(turtle,null))==1.0,
+            "a fully lifted landship has no ground friction left to apply");
+        Airship half=liftShip(1000,7);
+        double load=GroundLoad.loadFraction(half,null);
+        check(load>0.4&&load<0.6,"partial turtle armour leaves roughly half the weight on the ground ("+load+")");
+        double halfBase=GroundLoad.scaleFrictionBase(1.0-0.004,load);
+        check(halfBase>1.0-0.004&&halfBase<1.0,"half load halves the friction base ("+halfBase+")");
+        double[] frictions={0.004};
+        check(StrictMath.abs(EffectiveSpeed.perTickFactor(frictions,EffectiveSpeed.TICK_MS,load)
+            -StrictMath.pow(GroundLoad.scaleFrictionBase(1.0-0.004,load),EffectiveSpeed.TICK_MS))<1e-15,
+            "panel per-tick factor is the physics base scaled by the same load");
+        check(EffectiveSpeed.groundFrictionRate(frictions,EffectiveSpeed.TICK_MS,0.0)==0.0,
+            "zero load means zero ground friction rate in the panel too");
+    }
+    /** 造一艘只有装甲升力的陆行舰：装甲格全用龟甲（lift 35/格），不带模块与弹簧。 */
+    static Airship liftShip(int weight,int shellTiles) throws Exception {
+        Airship ship=(Airship)unsafe(Airship.class);
+        ship.type=ShipType.LANDSHIP;
+        ship.modules=new ArrayList<com.zarkonnen.airships.Module>();
+        ship.tiles=new ArrayList<Tile>();
+        set(ship,Airship.class,"weight",Integer.valueOf(weight));
+        if(shellTiles>0){
+            ArmourType shell=(ArmourType)unsafe(ArmourType.class);
+            putFinal(shell,ArmourType.class,"lift",BonusableValue.of(Integer.valueOf(35)));
+            for(int i=0;i<shellTiles;i++){
+                ArmourPlate plate=(ArmourPlate)unsafe(ArmourPlate.class);
+                plate.type=shell;plate.hp=60;
+                Tile tile=(Tile)unsafe(Tile.class);
+                tile.armour=plate;
+                ship.tiles.add(tile);
+            }
+        }
+        return ship;
+    }
+    /** final 字段只能用 Unsafe 直接写（ArmourType.lift 是 final）。 */
+    static void putFinal(Object target,Class<?> type,String name,Object value) throws Exception {
+        Field unsafeField=sun.misc.Unsafe.class.getDeclaredField("theUnsafe");unsafeField.setAccessible(true);
+        sun.misc.Unsafe u=(sun.misc.Unsafe)unsafeField.get(null);
+        u.putObject(target,u.objectFieldOffset(type.getDeclaredField(name)),value);
     }
 }

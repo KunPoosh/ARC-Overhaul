@@ -1,7 +1,7 @@
 // ARC 独立构建：仅引用本地框架与自有游戏依赖，不将它们打入 MOD。
 plugins { id 'java' }
 group = 'net.poosh.arc'
-version = '0.1.0-dev.7'
+version = '0.1.0-dev.8'
 
 def frameworkDir = file(findProperty('acbricDir') ?: '../Acbric')
 def apiJar = new File(frameworkDir, 'build/libs/Acbric-1.0-SNAPSHOT-api-mod.jar')

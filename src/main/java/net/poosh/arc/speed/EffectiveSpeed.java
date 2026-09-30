@@ -30,19 +30,36 @@ public final class EffectiveSpeed {
      * 一个 tick 内所有接地弹簧造成的乘性衰减因子。
      * 与原版一致：第一个弹簧吃满 {@code xFriction}，其余只吃 10%。
      */
-    public static double perTickFactor(double[] xFrictions, int ms) {
+    public static double perTickFactor(double[] xFrictions, int ms, double load) {
         if (xFrictions == null || xFrictions.length == 0) return 1.0;
-        double factor = StrictMath.pow(clamp(1.0 - xFrictions[0]), ms);
+        double factor = StrictMath.pow(clamp(1.0 - xFrictions[0] * load), ms);
         for (int i = 1; i < xFrictions.length; i++)
-            factor *= StrictMath.pow(clamp(1.0 - xFrictions[i] * SECONDARY_SPRING_MULT), ms);
+            factor *= StrictMath.pow(clamp(1.0 - xFrictions[i] * SECONDARY_SPRING_MULT * load), ms);
         return factor;
     }
 
-    /** 接地摩擦速率 λ（单位 1/ms）；没有接地弹簧时为 0。 */
-    public static double groundFrictionRate(double[] xFrictions, int ms) {
-        double factor = perTickFactor(xFrictions, ms);
+    /** 没有升力时的每 tick 衰减因子，等价于载荷比例 1（原版）。 */
+    public static double perTickFactor(double[] xFrictions, int ms) {
+        return perTickFactor(xFrictions, ms, 1.0);
+    }
+
+    /**
+     * 接地摩擦速率 λ（单位 1/ms）；没有接地弹簧时为 0。
+     *
+     * <p>{@code load} 是 {@link GroundLoad#loadFraction} 给出的接地载荷比例：它与物理侧
+     * （{@code ModuleGroundFrictionMixin} / {@code LegGroundFrictionMixin}）用的是同一条规则
+     * ——把每个弹簧的 {@code xFriction} 乘以载荷比例，所以这里也逐项乘同一个数，
+     * 面板与实际逐项对应。</p>
+     */
+    public static double groundFrictionRate(double[] xFrictions, int ms, double load) {
+        double factor = perTickFactor(xFrictions, ms, load);
         if (!(factor < 1.0)) return 0.0;
         return -StrictMath.log(StrictMath.max(factor, 1.0e-9)) / ms;
+    }
+
+    /** 没有升力时的接地摩擦速率（载荷比例 1，原版口径）。 */
+    public static double groundFrictionRate(double[] xFrictions, int ms) {
+        return groundFrictionRate(xFrictions, ms, 1.0);
     }
 
     /**
@@ -77,10 +94,17 @@ public final class EffectiveSpeed {
                 / (2.0 * airFriction);
     }
 
-    /** 这艘舰此刻的物理等效速度（未乘地图倍率）。 */
+    /**
+     * 这艘舰此刻的物理等效速度（未乘地图倍率）。
+     *
+     * <p>接地摩擦速率 λ 还要乘以接地载荷比例：悬浮石与龟甲（Shell Armour）提供的升力抵消掉的那部分
+     * 重力不会压在地面上，摩擦随之减轻（见 {@link GroundLoad}）。物理侧由
+     * {@code ModuleGroundFrictionMixin} / {@code LegGroundFrictionMixin} 施加同一比例，两边口径一致。</p>
+     */
     public static double effectiveSpeed(Airship ship) {
         if (ship == null) return 0.0;
-        double ground = groundFrictionRate(springFrictions(ship), TICK_MS);
+        Combat combat = ship.CURRENT_COMBAT_DELETEME;
+        double ground = groundFrictionRate(springFrictions(ship), TICK_MS, GroundLoad.loadFraction(ship, combat));
         double air = ship.frontAirFriction() * waterMultiplier(ship);
         return StrictMath.min(ship.getMaxXSpeed(), steadySpeed(ship.getPropulsion(), ship.getMass(), air, ground));
     }
