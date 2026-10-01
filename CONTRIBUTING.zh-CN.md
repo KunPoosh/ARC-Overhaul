@@ -18,7 +18,7 @@
 
 默认使用相邻 `../Acbric`，包括其中 `libs` 的游戏库。首次可能下载 Gradle 8.13，缓存准备好后才可加 `--offline`。机器路径可以写在已忽略的项目 `gradle.properties`（`acbricDir=...`、`gameLibDir=...`），建议使用正斜杠。构建不会读取 `local.properties`。
 
-输出仅为 MOD：`build/libs/ARC-Overhaul-0.1.0-dev.7.jar`，不组装完整游戏，也不自动安装。安装时替换旧 ARC JAR；新旧名称的 ID 都是 `arc_overhaul`，不可同时保留启用。
+输出仅为 MOD：`build/libs/ARC-Overhaul-0.1.0-dev.9.jar`，不组装完整游戏，也不自动安装。安装时替换旧 ARC JAR；新旧名称的 ID 都是 `arc_overhaul`，不可同时保留启用。
 
 ## 开发与评审
 

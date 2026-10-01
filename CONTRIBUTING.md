@@ -18,7 +18,7 @@ ARC Overhaul is an independent gameplay MOD for Airships: Conquer the Skies, pow
 
 The default is a sibling `../Acbric` directory, including its `libs` for game libraries. First use may download Gradle 8.13; add `--offline` only after it is cached. Machine-specific overrides can be placed in the ignored project `gradle.properties` (`acbricDir=...`, `gameLibDir=...`); use forward slashes. `local.properties` is not read by the build.
 
-This generates only the MOD, `build/libs/ARC-Overhaul-0.1.0-dev.7.jar`. It does not assemble or install a full game. Replace the older ARC JAR when installing; both names use the same `arc_overhaul` ID. Never install both.
+This generates only the MOD, `build/libs/ARC-Overhaul-0.1.0-dev.9.jar`. It does not assemble or install a full game. Replace the older ARC JAR when installing; both names use the same `arc_overhaul` ID. Never install both.
 
 ## Work and review
 
