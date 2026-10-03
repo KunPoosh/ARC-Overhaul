@@ -349,11 +349,17 @@ public final class ArcRuntimeProbe {
         check(window.title().equals(FleetOptions.title())&&window.modal()&&window.footer()!=null,
             "fleet window is a modal window with the bilingual title and an action footer");
         List<UiNode> body=kids(window.content());
-        check(body.size()==3&&kindOf(body.get(0)).equals("LABEL")&&kindOf(body.get(2)).equals("LABEL"),
-            "window body is explanation + list + status");
-        check(kindOf(body.get(1)).equals("SCROLL"),"the catalogue sits in a scroll area so long fleet lists stay reachable");
-        List<UiNode> rows=kids(kids(body.get(1)).get(0));
-        check(rows.size()==fleets.size(),"one row per loaded AI fleet ("+rows.size()+"/"+fleets.size()+")");
+        check(body.size()>=5&&kindOf(body.get(0)).equals("LABEL")&&kindOf(body.get(1)).equals("ROW"),
+            "the window body starts with the explanation and the search row");
+        check(kindOf(body.get(body.size()-1)).equals("LABEL"),"the window body ends with the status line");
+        int scroll=-1;for(int i=0;i<body.size();i++)if(kindOf(body.get(i)).equals("SCROLL"))scroll=i;
+        check(scroll>1,"the catalogue sits in a scroll area so long fleet lists stay reachable");
+        List<UiNode> search=kids(body.get(1));
+        check(search.size()==4&&kindOf(search.get(1)).equals("TEXT")&&kindOf(search.get(2)).equals("BUTTON")&&kindOf(search.get(3)).equals("BUTTON"),
+            "the search row offers a text field, a find button and a clear button");
+        int pageSize=(Integer)field(null,FleetOptions.class,"PAGE_SIZE");
+        List<UiNode> rows=kids(kids(body.get(scroll)).get(0));
+        check(rows.size()==Math.min(pageSize,fleets.size()),"one row per fleet on the page ("+rows.size()+" of "+fleets.size()+")");
         ConstructionStrategy first=fleets.get(0);
         List<UiNode> row=kids(rows.get(0));
         check(row.size()==3&&kindOf(row.get(0)).equals("LABEL")&&kindOf(row.get(1)).equals("BUTTON")&&kindOf(row.get(2)).equals("COLUMN"),
@@ -371,11 +377,92 @@ public final class ArcRuntimeProbe {
         check(((java.util.function.Supplier<?>)field(countField.get(2),UiNode.class,"text")).get().equals(""),
             "an untouched country count shows no error line");
         List<UiNode> footer=kids(window.footer());
-        check(footer.size()==4,"the footer is status plus three action rows");
+        check(footer.size()==5,"the footer is status plus four action rows");
         List<UiNode> bulk=kids(footer.get(2));
         check(bulk.size()==2&&textOf(bulk.get(0)).equals(FleetOptions.text("Force disable all","全部强制禁用"))
             &&textOf(bulk.get(1)).equals(FleetOptions.text("Force enable all","全部强制启用")),
             "the footer carries force-disable-all and force-enable-all buttons");
+        List<UiNode> pages=kids(footer.get(4));
+        check(pages.size()==3&&textOf(pages.get(0)).equals(FleetOptions.text("Previous page","上一页"))
+            &&textOf(pages.get(1)).equals(FleetOptions.text("Next page","下一页")),
+            "the footer carries previous/next page buttons and a page summary");
+    }
+    static int countNodes(UiNode node,Set<UiNode> seen) throws Exception {
+        if(!seen.add(node))return 0;
+        int total=1;
+        for(UiNode child:kids(node))total+=countNodes(child,seen);
+        return total;
+    }
+    /**
+     * 大型舰队包：注册几十支 AI 舰队后窗口仍必须能构造，行数受分页限制，
+     * 组件树不超过框架的上限（旧版框架是 512 个节点，超过会直接抛异常、整个设置页打不开）。
+     * 同时验证搜索框按 ID/显示名过滤、且不区分大小写。
+     */
+    static void checkFleetWindowScale() throws Exception {
+        int before=FleetOptions.loadedFleets().size();
+        List<ConstructionStrategy> added=new ArrayList<>();
+        for(int i=0;i<45;i++)added.add(fleet("arc-scale-"+i));
+        List<ConstructionStrategy> fleets=FleetOptions.loadedFleets();
+        check(fleets.size()==before+45,"the catalogue holds every registered AI fleet ("+fleets.size()+")");
+        UiWindow window=FleetOptions.window();
+        int pageSize=(Integer)field(null,FleetOptions.class,"PAGE_SIZE");
+        List<UiNode> body=kids(window.content());
+        int scroll=-1;for(int i=0;i<body.size();i++)if(kindOf(body.get(i)).equals("SCROLL"))scroll=i;
+        List<UiNode> rows=kids(kids(body.get(scroll)).get(0));
+        check(rows.size()==pageSize,"the window builds with a bounded number of rows ("+rows.size()+")");
+        Set<UiNode> seen=Collections.newSetFromMap(new IdentityHashMap<>());
+        int nodes=countNodes(window.content(),seen);
+        if(window.footer()!=null)nodes+=countNodes(window.footer(),seen);
+        check(nodes<=512,"the component tree stays under the 512-node limit with "+fleets.size()+" fleets ("+nodes+" nodes)");
+        Class<?> editorType=Class.forName("net.poosh.arc.conquest.FleetOptions$Editor");
+        Constructor<?> constructor=editorType.getDeclaredConstructor();constructor.setAccessible(true);
+        Object editor=constructor.newInstance();
+        call(editor,"setFilter","arc-scale-7");
+        List<?> visible=(List<?>)call(editor,"visible",fleets);
+        check(visible.size()==1&&visible.contains(added.get(7)),"the search box finds one fleet by ID ("+visible.size()+")");
+        call(editor,"setFilter","ARC-SCALE-7");
+        check(((List<?>)call(editor,"visible",fleets)).size()==1,"the search ignores letter case");
+        call(editor,"setFilter","");
+        check(((List<?>)call(editor,"visible",fleets)).size()==fleets.size(),"an empty search shows every fleet again");
+        String summary=(String)call(editor,"pageSummary",pageSize,fleets.size(),0,3);
+        check(summary.contains(Integer.toString(fleets.size())),"the page summary reports the full catalogue ("+summary+")");
+        Map<?,?> registry=Loadable.map.get(ConstructionStrategy.class);
+        if(registry!=null)for(ConstructionStrategy extra:added)registry.remove(extra.name);
+        check(FleetOptions.loadedFleets().size()==before,"the scaled fleet set is removed again for the later checks");
+    }
+    /**
+     * 舰队来源提示：跨 MOD 重复的 ID 会被后加载者静默顶替，缺 name 的声明会被静默跳过，
+     * 白名单外的字符在游戏自带搜索框里打不出来。三类问题都必须能被读出来并带来源。
+     */
+    static void checkFleetSources() throws Exception {
+        Path root=Files.createTempDirectory("arc-fleet-sources");
+        Path packA=Files.createDirectories(root.resolve("fleet-pack-a"));
+        Path packB=Files.createDirectories(root.resolve("fleet-pack-b"));
+        Files.writeString(packA.resolve("a.json"),"[{\"name\":\"arc-dup\",\"displayName\":\"鐵甲\"},{\"displayName\":\"no id\"}]",
+            java.nio.charset.StandardCharsets.UTF_8);
+        Files.writeString(packB.resolve("b.json"),"[{\"name\":\"arc-dup\",\"displayName\":\"铁甲\"},{\"name\":\"arc-ok\",\"displayName\":\"铁甲舰队\"}]",
+            java.nio.charset.StandardCharsets.UTF_8);
+        Map<String,java.io.File> roots=new LinkedHashMap<>();
+        roots.put("fleet-pack-a",packA.toFile());roots.put("fleet-pack-b",packB.toFile());
+        Class<?> type=Class.forName("net.poosh.arc.conquest.FleetSources");
+        Method scan=type.getDeclaredMethod("scan",Map.class);scan.setAccessible(true);
+        Object report=scan.invoke(null,roots);
+        Method messages=report.getClass().getDeclaredMethod("messages");messages.setAccessible(true);
+        Method duplicateIds=report.getClass().getDeclaredMethod("duplicateIds");duplicateIds.setAccessible(true);
+        Method untypeableIds=report.getClass().getDeclaredMethod("untypeableIds");untypeableIds.setAccessible(true);
+        List<?> text=(List<?>)messages.invoke(report);
+        Set<?> duplicates=(Set<?>)duplicateIds.invoke(report);
+        Set<?> untypeable=(Set<?>)untypeableIds.invoke(report);
+        check(duplicates.contains("arc-dup")&&!duplicates.contains("arc-ok"),
+            "a duplicate AI fleet ID across MODs is reported, a unique one is not ("+duplicates+")");
+        check(untypeable.contains("arc-dup")&&!untypeable.contains("arc-ok"),
+            "only names the game's own search box cannot type are flagged ("+untypeable+")");
+        check(text.stream().anyMatch(row->String.valueOf(row).contains("arc-dup")&&String.valueOf(row).contains("fleet-pack-a")),
+            "the duplicate report names the shared ID and both MOD sources");
+        check(text.stream().anyMatch(row->String.valueOf(row).contains("name")),
+            "a declaration without a name is reported");
+        check(text.size()>=3,"duplicate, missing-name and untypeable-name problems are all reported ("+text.size()+")");
+        Files.deleteIfExists(packA.resolve("a.json"));Files.deleteIfExists(packB.resolve("b.json"));
     }
     /**
      * 草稿会话：驱动窗口背后的真实 Editor，覆盖校验、提交写盘、未加载条目的保留与丢弃。
@@ -729,6 +816,8 @@ public final class ArcRuntimeProbe {
         checkOrderedTarget();
         checkFleetOptions();
         checkFleetWindowShape();
+        checkFleetWindowScale();
+        checkFleetSources();
         checkFleetEditor();
         checkFleetHookTarget();
         System.out.println("ARC RUNTIME PASS: "+checks+" checks");

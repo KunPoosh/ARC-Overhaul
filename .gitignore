@@ -10,6 +10,8 @@ userdata/
 runtime/
 research/
 decompiled/
+# 集成检查用的游戏输入视图（含游戏资源）只在本机拼装，不提交。
+tools/arc/.work/
 *.class
 *.jar
 *.zip

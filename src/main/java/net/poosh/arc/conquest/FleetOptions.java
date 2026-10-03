@@ -150,6 +150,15 @@ public final class FleetOptions {
 
     // ---------------------------------------------------------------- 界面
 
+    /**
+     * 一页显示多少行。
+     *
+     * <p>大型舰队包加载上百支 AI 舰队很常见，而框架的组件树有规模上限、每帧还会对整棵树做测量：
+     * 一次建出全部行既可能触发上限，也会明显拖慢设置页。分页把节点数固定在几百以内，并配合
+     * 搜索框让玩家能直接找到某一支舰队（游戏自带的搜索框打不出白名单外的字符，这里不受影响）。</p>
+     */
+    private static final int PAGE_SIZE = 40;
+
     private static final List<Ui.Choice> MODES = List.of(
         new Ui.Choice(FleetPlan.Mode.ALLOW.wire(), () -> text("Allow (random)", "允许（随机出现）")),
         new Ui.Choice(FleetPlan.Mode.FORCE.wire(), () -> text("Force enable", "强制启用")),
@@ -184,20 +193,43 @@ public final class FleetOptions {
                     "无法打开 AI 舰队设置，请检查 game/config/arc_overhaul/conquest-fleets.json。")),
                 Ui.button(() -> text("Close", "关闭"), UiWindowHandle::close)));
         }
+        return build(editor);
+    }
+
+    /** 换页或改过滤条件时重建窗口：复用同一个草稿会话，未应用的修改不会丢。 */
+    private static void show(Editor editor, UiWindowHandle handle) {
+        editor.rebuilding = true;
+        handle.close();
+        ui.open(build(editor));
+    }
+
+    private static UiWindow build(Editor editor) {
         List<ConstructionStrategy> fleets = loadedFleets();
+        List<ConstructionStrategy> shown = editor.visible(fleets);
+        int pages = Math.max(1, (shown.size() + PAGE_SIZE - 1) / PAGE_SIZE);
+        int page = Math.min(editor.page(), pages - 1);
+        editor.setPage(page);
+        int from = page * PAGE_SIZE, to = Math.min(shown.size(), from + PAGE_SIZE);
+
         List<UiNode> rows = new ArrayList<>();
-        for (ConstructionStrategy fleet : fleets) {
+        for (int i = from; i < to; i++) {
+            ConstructionStrategy fleet = shown.get(i);
             String name = fleet.name;
             String label = displayName(fleet);
-            UiNode title = Ui.label(label).width(360).tooltip(sourceTag(fleet));
+            UiNode head = Ui.label(label).width(360).tooltip(sourceTag(fleet) + editor.tag(fleet));
             rows.add(Ui.row(8, Ui.Align.CENTER,
-                title,
+                head,
                 Ui.choice(() -> editor.mode(name).wire(), MODES, value -> editor.setMode(name, FleetPlan.Mode.of(value))).width(190),
                 arc$countCell(editor, name)));
         }
-        UiNode list = fleets.isEmpty()
-            ? Ui.label(() -> text("No AI fleet is loaded. Enable an AI fleet MOD and reopen this window.", "当前没有加载任何 AI 舰队。请启用 AI 舰队 MOD 后重新打开本窗口。"))
-            : Ui.scroll(430, Ui.column(6, rows.toArray(UiNode[]::new)));
+        FleetSources.Report report = editor.report();
+        UiNode list;
+        if (fleets.isEmpty())
+            list = Ui.label(() -> text("No AI fleet is loaded. Enable an AI fleet MOD and reopen this window.", "当前没有加载任何 AI 舰队。请启用 AI 舰队 MOD 后重新打开本窗口。"));
+        else if (shown.isEmpty())
+            list = Ui.label(() -> text("No AI fleet matches the search text.", "没有匹配搜索内容的 AI 舰队。"));
+        else
+            list = Ui.scroll(430, Ui.column(6, rows.toArray(UiNode[]::new)));
 
         List<UiNode> footer = new ArrayList<>();
         footer.add(Ui.label(() -> editor.isDirty()
@@ -215,21 +247,34 @@ public final class FleetOptions {
                 text("Reload fleet settings", "重新读取舰队设置"),
                 text("Discard this draft and read the file again?", "丢弃草稿并重新读取文件？"),
                 text("Reload", "重新读取"), text("Cancel", "取消"), editor::reload))));
+        footer.add(Ui.row(8,
+            Ui.button(() -> text("Previous page", "上一页"), handle -> { editor.setPage(page - 1); show(editor, handle); }).enabled(() -> page > 0),
+            Ui.button(() -> text("Next page", "下一页"), handle -> { editor.setPage(page + 1); show(editor, handle); }).enabled(() -> page + 1 < pages),
+            Ui.label(() -> editor.pageSummary(shown.size(), fleets.size(), page, pages))));
 
-        UiNode body = Ui.column(8,
-            Ui.label(() -> text(
-                "Each row is one AI fleet loaded by the game. Allow: may be picked at random (vanilla). "
-                    + "Force enable: reserved and handed to exactly the given number of non-player countries. "
-                    + "Force disable: never used. The country count applies to AI countries only; your own country keeps the vanilla fleet. "
-                    + "You can clear the country count and type a new one; an empty box is never saved as 0, it falls back to the last number you had.",
-                "每一行是游戏当前加载的一支 AI 舰队。允许：可能被随机选中（等同原版）。"
-                    + "强制启用：从随机池里拿掉，改为强制分配给指定数量的非玩家国家。"
-                    + "强制禁用：永不出现。出场国家数只统计 AI 国家，你自己的国家仍按原版处理。"
-                    + "出场国家数可以先清空再重新输入；留空不会被保存成 0，而是沿用上一次的有效数字。")),
-            list,
-            Ui.label(() -> editor.status));
+        List<UiNode> body = new ArrayList<>();
+        body.add(Ui.label(() -> text(
+            "Each row is one AI fleet loaded by the game. Allow: may be picked at random (vanilla). "
+                + "Force enable: reserved and handed to exactly the given number of non-player countries. "
+                + "Force disable: never used. The country count applies to AI countries only; your own country keeps the vanilla fleet. "
+                + "You can clear the country count and type a new one; an empty box is never saved as 0, it falls back to the last number you had.",
+            "每一行是游戏当前加载的一支 AI 舰队。允许：可能被随机选中（等同原版）。"
+                + "强制启用：从随机池里拿掉，改为强制分配给指定数量的非玩家国家。"
+                + "强制禁用：永不出现。出场国家数只统计 AI 国家，你自己的国家仍按原版处理。"
+                + "出场国家数可以先清空再重新输入；留空不会被保存成 0，而是沿用上一次的有效数字。")));
+        body.add(Ui.row(8,
+            Ui.label(() -> text("Search", "搜索")).width(60),
+            Ui.textField(() -> editor.filterText(), 64, editor::setFilter).width(260)
+                .onSubmit(handle -> show(editor, handle)),
+            Ui.button(() -> text("Find", "查找"), handle -> show(editor, handle)),
+            Ui.button(() -> text("Clear", "清除"), handle -> { editor.clearFilter(); show(editor, handle); })));
+        body.add(Ui.label(() -> editor.pageSummary(shown.size(), fleets.size(), page, pages)));
+        for (String message : report.messages()) body.add(Ui.label(message));
+        body.add(list);
+        body.add(Ui.label(() -> editor.status));
 
-        return new UiWindow(title(), 820, 660, true, body, reason -> editor.cancel())
+        return new UiWindow(title(), 820, 660, true, Ui.column(8, body.toArray(UiNode[]::new)),
+                reason -> { if (editor.rebuilding) editor.rebuilding = false; else editor.cancel(); })
             .withFooter(Ui.column(8, footer.toArray(UiNode[]::new)))
             .onCloseRequest(handle -> {
                 if (!editor.isDirty()) handle.close();
@@ -253,6 +298,59 @@ public final class FleetOptions {
         private final List<String> known = new ArrayList<>();
         private ConfigSnapshot baseline;
         private String status;
+        /** 搜索文本与页码：换页/搜索会重建窗口，但草稿留在同一个 Editor 里。 */
+        private String filter = "";
+        private int page;
+        /** 重建窗口（换页、搜索、清除）时不还原草稿；玩家关窗仍走 cancel。 */
+        boolean rebuilding;
+        /** 舰队来源问题的只读扫描结果；开窗时算一次，换页不重复读盘。 */
+        private FleetSources.Report report;
+
+        FleetSources.Report report() {
+            if (report == null) report = FleetSources.scan();
+            return report;
+        }
+
+        String filterText() { return filter; }
+
+        void setFilter(String value) {
+            filter = value == null ? "" : value.trim();
+            page = 0;
+        }
+
+        void clearFilter() { filter = ""; page = 0; }
+
+        int page() { return page; }
+
+        void setPage(int value) { page = Math.max(0, value); }
+
+        String pageSummary(int shown, int total, int page, int pages) {
+            return text("Showing " + shown + " of " + total + " AI fleets — page " + (page + 1) + "/" + pages,
+                "共 " + total + " 支 AI 舰队，当前显示 " + shown + " 支 — 第 " + (page + 1) + "/" + pages + " 页");
+        }
+
+        /** 要显示的行：按显示名、ID 或来源 MOD 过滤；搜索框不受游戏自带输入白名单限制。 */
+        List<ConstructionStrategy> visible(List<ConstructionStrategy> fleets) {
+            if (filter.isEmpty()) return fleets;
+            String needle = filter.toLowerCase(Locale.ROOT);
+            List<ConstructionStrategy> result = new ArrayList<>();
+            for (ConstructionStrategy fleet : fleets)
+                if (displayName(fleet).toLowerCase(Locale.ROOT).contains(needle)
+                        || fleet.name.toLowerCase(Locale.ROOT).contains(needle)
+                        || sourceTag(fleet).toLowerCase(Locale.ROOT).contains(needle)) result.add(fleet);
+            return result;
+        }
+
+        /** 行内提示：ID 冲突或名称打不出来时补一句，玩家才知道为什么某些舰队“找不到”。 */
+        String tag(ConstructionStrategy fleet) {
+            FleetSources.Report scanned = report();
+            if (scanned.duplicateIds().contains(fleet.name))
+                return text(" · duplicate ID: only the last loaded fleet with this ID is used",
+                    " · ID 重复：只有最后加载的同 ID 舰队生效");
+            if (scanned.untypeableIds().contains(fleet.name))
+                return text(" · the game's own search box cannot type this name", " · 游戏自带搜索框打不出这个名字");
+            return "";
+        }
 
         Editor() {
             try { accept(config.load()); }
@@ -279,8 +377,8 @@ public final class FleetOptions {
             }
             for (Map.Entry<String, FleetPlan.Entry> entry : plan.entries().entrySet())
                 if (!modes.containsKey(entry.getKey())) preserved.put(entry.getKey(), entry.getValue());
-            status = text("New campaigns only; all peers must use matching settings.",
-                "仅新战役生效；联机各方需使用相同设置。");
+            status = text("New campaigns only; in a lobby the host's settings apply to everyone automatically.",
+                "仅新战役生效；联机时以房主设置为准，其他玩家自动采用，不需要各自手动改成一样。");
         }
 
         FleetPlan.Mode mode(String name) { return modes.getOrDefault(name, FleetPlan.Mode.ALLOW); }

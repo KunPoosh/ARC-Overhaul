@@ -41,9 +41,9 @@ public final class StartingOptions {
             ConfigField.integer("towns", new ConfigField.Text("Towns per human empire", "每个人类势力的城镇数"), -1, StartValues.MAX_TOWNS, effect)
                 .description(new ConfigField.Text("-1: map default. Otherwise 0–8. AI counts remain vanilla.", "-1：地图默认。自定义为 0–8。AI 数量保持原版。")),
             ConfigField.integer("cash", new ConfigField.Text("Player starting cash", "玩家开局现金"), -1, StartValues.MAX_CASH, effect)
-                .description(new ConfigField.Text("-1: vanilla. Otherwise 0–1000000 AFTER starting assets. New campaigns only; all peers must use matching settings.", "-1：原版。自定义为 0–1000000，在初始资产配置后设置。仅新战役生效；联机各方需使用相同设置。")),
+                .description(new ConfigField.Text("-1: vanilla. Otherwise 0–1000000 AFTER starting assets. New campaigns only; in a lobby the host's settings apply to everyone.", "-1：原版。自定义为 0–1000000，在初始资产配置后设置。仅新战役生效；联机时以房主设置为准，其他玩家自动采用。")),
             ConfigField.integer("research", new ConfigField.Text("Player starting research points", "玩家开局研发点"), 0, StartValues.MAX_RESEARCH, effect)
-                .description(new ConfigField.Text("0: no points granted (vanilla). Otherwise 0–10000000 banked as unassigned research and poured into the first tech you pick. Scale reference: one tier-0 technology costs about 2,240,000 points. New campaigns only; all peers must use matching settings.", "0：不发放，等同原版。自定义为 0–10,000,000，作为未分配研发点存入，在你选定第一个科技时全部注入。量级参考：一项 0 级科技约需 2,240,000 点。仅新战役生效；联机各方需使用相同设置。")));
+                .description(new ConfigField.Text("0: no points granted (vanilla). Otherwise 0–10000000 banked as unassigned research and poured into the first tech you pick. Scale reference: one tier-0 technology costs about 2,240,000 points. New campaigns only.", "0：不发放，等同原版。自定义为 0–10,000,000，作为未分配研发点存入，在你选定第一个科技时全部注入。量级参考：一项 0 级科技约需 2,240,000 点。仅新战役生效；联机时以房主设置为准。")));
         try { return SettingsUi.window(title(), new ConfigEditor(config, fields), applied -> ArcRules.publish()); }
         catch (IOException ex) { throw new IllegalStateException("Cannot open ARC settings / 无法打开 ARC 设置", ex); }
     }
