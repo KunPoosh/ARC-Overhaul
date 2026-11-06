@@ -8,6 +8,8 @@ import net.poosh.arc.conquest.ArcRules;
 import net.poosh.arc.conquest.FleetOptions;
 import net.poosh.arc.conquest.StartingOptions;
 import net.poosh.arc.ui.UiScaleOptions;
+import net.poosh.arc.client.DisplayOptions;
+import net.poosh.arc.client.SpectatorResearch;
 
 public final class ArcMod implements AcbricInitializer {
     public static final String MOD_ID = "arc_overhaul";
@@ -21,5 +23,7 @@ public final class ArcMod implements AcbricInitializer {
         // 框架的共享规则按 MOD ID 只能注册一次，开局设置与 AI 舰队规则合并成一份。
         ArcRules.initialize(context, starting, fleets);
         UiScaleOptions.initialize(context);
+        DisplayOptions.initialize(context);
+        SpectatorResearch.initialize();
     }
 }

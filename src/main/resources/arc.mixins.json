@@ -18,7 +18,11 @@
     "OrderedTargetWeaponMixin",
     "OrderedTargetAircraftMixin",
     "OrderedTargetCommandMixin",
-    "OrderedTargetButtonMixin"
+    "OrderedTargetButtonMixin",
+    "ResourceBarsMixin",
+    "TrackLayersMixin",
+    "TrackRenderingMixin",
+    "ClientButtonsMixin"
   ],
   "injectors": {
     "defaultRequire": 1

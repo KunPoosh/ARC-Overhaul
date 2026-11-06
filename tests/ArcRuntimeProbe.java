@@ -821,6 +821,7 @@ public final class ArcRuntimeProbe {
         checkFleetSources();
         checkFleetEditor();
         checkFleetHookTarget();
+        FeatureRuntimeChecks.run();
         System.out.println("ARC RUNTIME PASS: "+checks+" checks");
     }
     /**
