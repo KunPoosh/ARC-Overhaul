@@ -1,5 +1,7 @@
 # ARC Overhaul test guide
 
+2026-11-06 raster-quality follow-up: Acbric 0.3.7.1 fixes the blurred Small-bitmap enlargement without requiring an ARC update. Runtime checks now require exact native font, CJK fallback and border objects at 100/150/200%; both 1.2.15.2 and 1.2.15.3 pass 729 checks (`build/runtime-tests/ui-scale-sharp-final`). Framework GPU evidence in `build/ui-scale-visual/sharp-after` confirms the 200% ARC panel interior matches native Large pixel-for-pixel at 2560×1600. Other percentages may reflow as the framework now uses native tier fonts/metrics; see its UI contract.
+
 ## Current UI scale validation (dev.12, 2026-11-06)
 
 Acbric **0.3.7** and ARC **0.1.0-dev.12** pass **720 checks on each of games 1.2.15.2 / 1.2.15.3** (1,440 total), recorded in `build/runtime-tests/ui-scale-release/summary.json`. This includes 98 new checks for percentage bounds, glyph metrics and crops, native Draw/MyDraw constructor injection, matching button hit regions, the native Settings insertion point and preset actions, bilingual config editors, draft validation, save/reload/defaults and exclusion from shared rules. The verified ARC JAR SHA256 is `396d8a87f81d4be0187fe00d070446bd017908b2665a78c5b2f6b4231c90fe23`.

@@ -31,22 +31,26 @@ public final class UiScaleRuntimeChecks {
         Img baseBorder = MyDraw.BUTTON_START;
         check(baseFont != null && baseFont.get('A') != null, "real game font metrics available");
         for (int percent : new int[]{50, 100, 125, 137, 200, 125}) {
+            int basis = percent > 150 ? 200 : percent > 100 ? 150 : 100;
+            Fount rasterFont = percent > 150 ? AGame.LARGE_FOUNT[0] : percent > 100 ? AGame.MEDIUM_FOUNT[0] : baseFont;
+            Img rasterBorder = percent > 150 ? MyDraw.LARGE_BUTTON_START : percent > 100 ? MyDraw.MEDIUM_BUTTON_START : baseBorder;
+            int rasterHeight = percent > 150 ? MyDraw.LARGE_BUTTON_H : percent > 100 ? MyDraw.MEDIUM_BUTTON_H : baseHeight;
             UiScale.setPercent(percent);
             // 运行真实 AirshipGame 注入处理器，顺序与 render HEAD 完全相同。
             handler(AirshipGame.class,"acbric$prepareUiRender",Frame.class,org.spongepowered.asm.mixin.injection.callback.CallbackInfo.class)
                 .invoke(game,null,new org.spongepowered.asm.mixin.injection.callback.CallbackInfo("render",false));
-            check(MyDraw.BUTTON_H == Math.max(1,Math.round(baseHeight * percent / 100f)), "native button metric at " + percent + "%");
-            check(AGame.FOUNT.getWidth('A') == Math.max(1,Math.round(baseFont.getWidth('A') * percent / 100f)), "font measurement at " + percent + "%");
+            check(MyDraw.BUTTON_H == Math.max(1,Math.round(rasterHeight * percent / (float)basis)), "native button metric at " + percent + "%");
+            check(AGame.FOUNT.getWidth('A') == Math.max(1,Math.round(rasterFont.getWidth('A') * percent / (float)basis)), "font measurement at " + percent + "%");
             check(AGame.HUGE_FOUNT == baseTitle, "native fixed-size title preserved at " + percent + "%");
             check(game.guiScaleOverride == GUIScale.MEDIUM && AirshipGame.scaleFrom == null, "native preference and render resolution untouched at " + percent + "%");
             RecordingFrame frame = new RecordingFrame();
             Draw draw = new Draw(frame);
             check(draw.frame() instanceof UiScaleFrame, "real Draw constructor wraps frame");
             draw.blit(MyDraw.BUTTON_START,17,29);
-            check(frame.lastImage == baseBorder && frame.x == 17 && frame.y == 29, "native draw retains crop and screen position");
-            check(percent == 100 ? frame.w == 0 : frame.w == MyDraw.BUTTON_START.srcWidth, "display width matches logical border");
+            check(frame.lastImage == rasterBorder && frame.x == 17 && frame.y == 29, "native draw uses matching-resolution crop and screen position");
+            check(percent == basis ? frame.w == 0 : frame.w == MyDraw.BUTTON_START.srcWidth, "display width matches logical border");
             draw.text("A",AGame.FOUNT,30,40);
-            check(frame.lastImage == baseFont.get('A'), "font raster uses original glyph crop");
+            check(frame.lastImage == rasterFont.get('A'), "font raster uses matching-resolution glyph crop");
             Hooks hooks = new Hooks();
             MyDraw.State state = new MyDraw.State();state.tick(16,new Pt(-100,-100));
             MyDraw nativeDraw = new MyDraw(frame,hooks,state,null);
@@ -59,11 +63,22 @@ public final class UiScaleRuntimeChecks {
             UiScaleBridge.beforeRender(game);
             check(AGame.FOUNT == same, "steady frame reuses font and glyph objects");
         }
+        for (int percent : new int[]{100,150,200}) {
+            GUIScale preset = percent == 100 ? GUIScale.SMALL : percent == 150 ? GUIScale.MEDIUM : GUIScale.LARGE;
+            preset.activate();
+            Fount nativeFont=AGame.FOUNT, nativeBig=AGame.BIG_FOUNT;
+            Img nativeButton=MyDraw.BUTTON_START, nativePanel=MyDraw.WIN_TL;
+            UiScale.setPercent(percent);UiScaleBridge.beforeRender(game);
+            check(AGame.FOUNT==nativeFont && AGame.BIG_FOUNT==nativeBig, "exact native font objects at " + percent);
+            check(MyDraw.BUTTON_START==nativeButton && MyDraw.WIN_TL==nativePanel, "exact native border objects at " + percent);
+            check(AGame.FOUNT.get('界')==nativeFont.get('界'), "exact native CJK fallback at " + percent);
+        }
+        UiScale.setPercent(125);UiScaleBridge.beforeRender(game);
         GUIScale.MEDIUM.activate();
         game.currentGUIScale = GUIScale.MEDIUM;
         Fount medium = AGame.FOUNT;int mediumHeight = MyDraw.BUTTON_H;
         UiScaleBridge.beforeRender(game);
-        check(AGame.FOUNT != medium && MyDraw.BUTTON_H == Math.round(baseHeight*1.25f), "native scale activation is followed by requested percentage");
+        check(AGame.FOUNT != medium && MyDraw.BUTTON_H == Math.round(MyDraw.MEDIUM_BUTTON_H*125f/150), "native scale activation is followed by requested percentage");
         UiScale.useVanilla();UiScaleBridge.beforeRender(game);
         check(AGame.FOUNT == medium && MyDraw.BUTTON_H == mediumHeight, "reset restores native current preset exactly");
         check(MyDraw.SMALL_BUTTON_START == baseBorder && AGame.SMALL_FOUNT[0] == baseFont, "baseline assets and fonts remain unchanged");
