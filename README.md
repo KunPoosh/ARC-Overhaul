@@ -1,29 +1,47 @@
 # ARC Overhaul
 
+Current artifact: **dev.16**. Landship campaign movement now uses the ground-friction speed shown on the panel, without the native minimum that accelerated slow ships. Low-supply return and travel estimates agree with that speed. Includes the dev.15 editor fix and all earlier integrated features. Game 1.2.15.3 / the validated API 0.3.7 artifact: 1,148 checks pass. See TESTING for evidence and manual checks.
+
+## dev.14 — 2026-11-06
+
+dev.14 restores full-height, native framed resource bars beside the labels while retaining all five resources in two rows. At very small scales where a row is shorter than the native fixed padding, a one-pixel frame keeps the fill visible. Starting options now include independent AI cities (1-4) and towns (0-8), each accepting -1 for vanilla. AI cities use native AI income; extra slots include both cities and towns. Missing `aiCities` in old rules reads as -1. Range labels use font-safe separators.
+
+Game 1.2.15.3 / API 0.3.7: **1,079 checks pass**; evidence `build/runtime-tests/dev14-final/summary.json`, JAR SHA256 `7400c17a72ffe93b865dc2989f6f809ee014fe70c9ad20152e4732657abca436`. New checks cover mixed settlement counts, native AI income, save restoration, and native resource drawing through a recording Frame at 50/100/125/150/200%. GPU appearance, full world generation and real multiplayer remain manual checks. The installed game has not been replaced.
+
+
+## dev.13 integration
+
+dev.13 integrates the four dev.11 features with dev.12 percentage UI scaling. The installed dev.12 was built from dev.10 plus commit `62b8f1c`; it never contained the resource, track, spectator or AI-town changes. Both test suites now run together: **907 checks pass on game 1.2.15.3 / API 0.3.7**, recorded in `build/runtime-tests/dev13-integrated/summary.json`. JAR SHA256: `80886894a18f38ce5727b42028a7fd765da4268a9a0d2fae3e1ca67c603de81b`. Packaged classes and Mixin registrations were checked too. GPU visuals and real multiplayer remain unverified; the running installation was not replaced.
+
+UI scaling is available through native Settings, MOD Details, or the conquest setup list: **ARC Overhaul: UI scale**. Enable custom scaling and choose 50–200%; 100% is native Small. It is a local preference and requires API 0.3.7.
+
+
 [中文](README.zh-CN.md)
 
-A standalone gameplay MOD, separate from Acbric. **0.1.0-dev.9** implements starting cities, towns, cash and research points for **human empires only**, plus full control over **which AI fleets appear on the map** and **T orders that can name defenceless targets**. AI starting counts and cash rules remain vanilla, although changes in placement and random draws can alter AI positions and asset combinations for the same seed.
+A standalone Airships MOD, separate from Acbric. **0.1.0-dev.16 supports game 1.2.15.3 only**. It includes human starting cities, towns, cash and research, AI fleet selection, AI starting towns, complete five-resource displays, switchable track layers, and research access while spectating multiplayer conquest battles. AI empires keep vanilla cash rules; changes to placement can affect random draws and initial assets.
 
 ## Use
 
-Requires Acbric API **0.3.3-dev.21 or a later compatible version** and Java 21. Exit the game and place `build/libs/ARC-Overhaul-0.1.0-dev.9.jar` in its `game/mods/`. Disable the old `acbric-starting-cities.jar` and restart first; the MODs declare a conflict. Do not install the dev.1 scaffold or fixture JARs.
+Requires Acbric API **0.3.7 or a later compatible version** and Java 21. Exit the game and place `build/libs/ARC-Overhaul-0.1.0-dev.16.jar` in its `game/mods/`. Disable the old `acbric-starting-cities.jar` and restart first; the MODs declare a conflict. Do not install the dev.1 scaffold or fixture JARs.
 
-Open **single-player conquest setup → scroll the settings list to the bottom → ARC Overhaul: Player starting options**, or **MOD list → ARC Overhaul → Details**. Edit, Apply, close, then start a new campaign. English/Chinese follow the game language.
+Open **single-player conquest setup → scroll the settings list to the bottom → ARC Overhaul: Starting options**, or **MOD list → ARC Overhaul → Details**. Edit, Apply, close, then start a new campaign. English/Chinese follow the game language.
 
 The same list has a second entry, **ARC Overhaul: AI fleets**, described below.
 
 | Field | Custom range | Meaning of `-1` |
 |---|---|---|
 | Cities | 1–4 | Vanilla: one city |
-| Towns | 0–8 | Current map default |
+| Human towns | 0–8 | Current map default |
+| AI cities | 1–4 | One city |
+| AI towns | 0–8 | Current map default |
 | Cash | 0–1,000,000 | Vanilla balance after difficulty and initial assets |
 | Research | 0–10,000,000 | `0` grants nothing (vanilla) |
 
-The first three default to `-1`, research defaults to `0`, and they work independently. Zero cities is rejected on Apply; zero cash is valid. Cash is assigned after initial buildings/ships and does not increase their budget. Counts affect native asset allocation and balance.
+Counts and cash default to `-1`, research to `0`; all are independent. AI towns use `aiTowns`, with missing keys in old configs/campaigns read as `-1`. Only new campaigns are affected; multiplayer uses the host’s frozen rules. Zero cities is rejected on Apply; zero cash is valid. Cash is assigned after initial buildings/ships and does not increase their budget. Counts affect native asset allocation and balance.
 
 Research points are banked into the native *unassigned* research pool (`Empire.unassignedResearchPoints`), which the game pours into the first research you select. Writing them into `Empire.researchPoints` instead does not work: the native "select research" command overwrites that field with the new tech's partial progress (0 for a fresh tech) before adding the pool, so the grant would be silently discarded on the first click. The range is in the millions on purpose — a technology costs `BASE_RESEARCH_COST × RESEARCH_COST_MULTIPLIER × 5600 × 1.4^tier` points (`Tech.baseCost`), about 2,240,000 for the first tiers, so a smaller grant is invisible on the progress bar.
 
-ARC-added settlements are never placed on a speck of land: the native spot finder accepts any non-water tile, so ARC re-rolls until the tile belongs to a connected landmass of at least `max(32, gridSize/4)` tiles. Retries are bounded and fall back to the last candidate, so the guard can never turn generation into a failure. Only human empires, and only when the counts are customised; AI and default settings keep the untouched native result.
+ARC-added settlements are never placed on a speck of land: the native spot finder accepts any non-water tile, so ARC re-rolls until the tile belongs to a connected landmass of at least `max(32, gridSize/4)` tiles. Retries are bounded and fall back to the last candidate, so the guard can never turn generation into a failure. The guard applies only to the side with customised counts: AI-only changes leave human placement native; AI placement remains native when AI towns are `-1`.
 
 Aircraft keep their attack runs pointed at the target: the native strafe logic stores one world-coordinate aim point per run and discards it once the target has moved 200 px away from it, then re-picks the point purely from which side of the target the aircraft is on — so a drifting target can send the aircraft the other way mid-run, which a bomber (lowest acceleration of the five aircraft, and it must fly straight over the middle of the target to release) pays for with an entire wasted pass. ARC now translates that aim point with the target's own movement, keeping the offset constant. See [CHANGELOG](CHANGELOG.md) for the mechanism and the measurements.
 
@@ -34,6 +52,13 @@ The same rule makes an **unarmed carrier** able to use T: launched aircraft inhe
 For the aircraft half of "can this ship take a T order", the flight centre alone is **not** the right test: `canGiveAircraftCommands()` is driven by `ModuleType.canGivePlaneCommands`, which only `FLIGHT_CENTRE` declares in the game's data, while the hangars (`BOMBER_HANGAR` and five more) declare only `quartersType` (whose `CrewType.canFly` is true). A carrier built from hangars without a flight centre therefore reads false there and its T button stayed grey. ARC uses the vanilla `Airship.hasFlyers()` instead so those carriers count too; a transport with neither guns nor aircraft bays is still skipped as in vanilla.
 
 Count limits are conservative. Insufficient space aborts generation instead of silently producing fewer settlements. More than 128 MiB of additional distance-array capacity is rejected; this is not a total game-memory limit.
+
+## Resources, track layers and spectator research
+
+- **Resources:** crew, ammo, water, coal and repair supplies have independent cells, arranged in at most three columns and two rows. Absent supplies occupy no slot; exhausted or battle-damaged supplies retain their original capacity display. Command and direct-control panels share the layout. Narrow cells shorten text; tooltips always retain full names and exact counts.
+- **Track layers:** open **ARC display** in the ship-editor toolbar, or **MOD Details → ARC Overhaul: Display**. Apply “Tracks behind armour” to let armour and decorations cover tracks; off restores the vanilla foreground. This immediately affects **all ships on this client**, leaving both leg passes unchanged. It is a local display preference, not a per-design setting, and does not change physics or require matching values on other clients.
+- **Spectator research:** while watching another empire’s battle in multiplayer conquest, use **Research** in the toolbar (the research binding, R by default). The native tech tree edits your own research and queue through normal multiplayer commands. Battle continues in the background; closing research returns to the same spectator battle. Empire-less spectators and active combatants do not gain this entry. Ended battles and disconnect/resync screens are not replaced by stale combat screens.
+
 
 ## AI fleets
 
@@ -61,12 +86,12 @@ Two smaller things are **not** done, because they need Acbric changes: the box c
 - Preferences live in `game/config/arc_overhaul/conquest-start.json` (starting values) and `game/config/arc_overhaul/conquest-fleets.json` (AI fleets). Acbric freezes shared rules for new campaigns — both files are frozen together — so later preference changes do not affect existing campaigns.
 - This version targets new campaigns. Old saves without ARC rules fail with `RULE_MISSING`; no automatic conversion occurs. Disable ARC and restart to play old saves. No ARC-specific migration tool is included.
 - Keep ARC installed for ARC campaigns. Loading/restoring never redistributes land or grants starting cash. Expanded ID capacity uses the technical `arcStartingLayout` save field.
-- Multiplayer uses existing rule checks, not host configuration broadcasting. All peers must set matching values through MOD Details before joining. No lobby editor is added; full multiplayer generation/resume remains unverified. Test single-player first.
+- Since Acbric 0.3.6, the host distributes authoritative gameplay rules; peers validate and adopt them without manually matching values in advance. Display preferences stay local in `game/config/arc_overhaul/display.json`. End-to-end multiplayer generation, resume and spectator research still require in-game acceptance.
 - Other world-generation MODs may conflict. Building has not changed the framework or the installed game.
 
 ## Build
 
-Use JDK 21 and a matching Acbric API dev.21 build. See [contributor setup](CONTRIBUTING.md) for exact dependencies and local paths. The framework baseline is commit `1be89b2`; it may not yet be available on the upstream default branch.
+Use JDK 21, Acbric API 0.3.7 or a later compatible version, and game 1.2.15.3 libraries. See [contributor setup](CONTRIBUTING.md) for dependencies and local paths. The original framework baseline `1be89b2` is historical; it does not replace the current API requirement.
 
 ```powershell
 .\gradlew.bat build
@@ -74,9 +99,9 @@ Use JDK 21 and a matching Acbric API dev.21 build. See [contributor setup](CONTR
 .\gradlew.bat build -PacbricDir="D:/Development/Acbric" -PgameLibDir="D:/Games/Airships/libs"
 ```
 
-Output: `build/libs/ARC-Overhaul-0.1.0-dev.9.jar`. Replace the previous ARC JAR instead of installing both. Game, framework and test classes are not bundled. Nothing is automatically installed. `build` checks compilation/packaging; its default `test` has no sources. Run [integration tests](TESTING.md#run-isolated-checks-windows) separately with your own game inputs.
+Output: `build/libs/ARC-Overhaul-0.1.0-dev.16.jar`. Replace the previous ARC JAR instead of installing both. Game, framework and test classes are not bundled. Nothing is automatically installed. `build` checks compilation/packaging; its default `test` has no sources. Run [integration tests](TESTING.md#run-isolated-checks-windows) separately with your own game inputs.
 
-PR #1 fixes missing territory colour for extra towns, with manual confirmation from the user. Both game builds (1.2.15.2 / 1.2.14) pass 407 targeted checks each, 814 total, using API dev.25: real Fabric transformation, native placement/contiguous IDs, territory tracing, one-time cash, configuration and native disk/binary-state persistence. Arms/background/land resources use fixtures and territory tracing uses synthetic ownership grids; full map/roads/initial-assets generation, GPU and multiplayer are not comprehensively verified. See [testing](TESTING.md).
+dev.11 passes **809 checks on game 1.2.15.3**, with the same JAR tested on both API 0.3.6 and 0.3.7. Checks include real Fabric transformations, native settlement placement/save restoration, five-resource drawing commands, track routing, and native spectator research commands through a capturing transport. GPU rendering, full world/initial-assets generation and real multiplayer sessions remain manual checks. See [testing](TESTING.md) for evidence and fixtures. Earlier game-version results are historical.
 
 ## Layout
 
@@ -85,7 +110,7 @@ PR #1 fixes missing territory colour for extra towns, with manual confirmation f
 - `build/`: regenerable outputs.
 - [Source investigation and design boundaries](RESEARCH.md): implementation evidence and legacy comparison.
 
-Gameplay lives in `conquest/`; native adapters live in `mixin/`. Keep future gameplay modules separate from the framework.
+Campaign gameplay lives in `conquest/`, display and spectator controls in `client/`, and native adapters in `mixin/`. Keep future gameplay modules separate from the framework.
 
 ## Contribute and license
 

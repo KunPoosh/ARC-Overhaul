@@ -1,4 +1,37 @@
-# Phase one: conquest starting options investigation
+# ARC Overhaul implementation research
+
+## dev.16: strategic landship speed
+
+On game 1.2.15.3, `Fleet.speed(ArrayList, BonusSet, WorldMap)` takes the slowest `Airship.getMainMapSpeed`, starting with an upper cap of 1.5, applies the largest captain/medal boosts, then clamps the result to at least 0.03. The earlier `ShipSpeedReportMixin` only redirected the panel call, leaving fleet movement on the old air-drag formula. Native `Fleet.tick` multiplies fleet speed by milliseconds and 0.0125; ETA and interception also use fleet speed. A panel value of 2 km/h can therefore coexist with 60.85 km/h on the campaign map, and simply correcting the speed source would still leave the roughly 15.4 km/h floor.
+
+`FleetSpeedMixin` redirects that single per-ship call for landships and changes the final lower bound to zero only when that group contains a landship. Three separate low-supply constants (instance speed and both `timeTo` overloads) become `min(0.03, corrected fleet speed)` for landships. Native grouping, bonuses, caps, route geometry and pure-airship rules remain in native code. No public campaign API exposes a speed hook, so these five precise injections are checked against shipped bytecode and actual Knot transformation.
+
+`EffectiveSpeed.strategicMapSpeed` shares the existing friction solver but supplies no combat context. `Airship.tick` sets `CURRENT_COMBAT_DELETEME` without clearing it afterward; using that reference on the strategic map would import stale water drag and combat-only available lift. Strategic motion uses the design lift and air drag, with the owner's native map multiplier. Combat reports retain their existing context-aware calculation. Tests and coverage limits are in [TESTING](TESTING.md).
+
+## dev.14 — 2026-11-06
+
+dev.14 restores full-height, native framed resource bars beside the labels while retaining all five resources in two rows. At very small scales where a row is shorter than the native fixed padding, a one-pixel frame keeps the fill visible. Starting options now include independent AI cities (1-4) and towns (0-8), each accepting -1 for vanilla. AI cities use native AI income; extra slots include both cities and towns. Missing `aiCities` in old rules reads as -1. Range labels use font-safe separators.
+
+Game 1.2.15.3 / API 0.3.7: **1,079 checks pass**; evidence `build/runtime-tests/dev14-final/summary.json`, JAR SHA256 `7400c17a72ffe93b865dc2989f6f809ee014fe70c9ad20152e4732657abca436`. New checks cover mixed settlement counts, native AI income, save restoration, and native resource drawing through a recording Frame at 50/100/125/150/200%. GPU appearance, full world generation and real multiplayer remain manual checks. The installed game has not been replaced.
+
+
+[中文](RESEARCH.zh-CN.md)
+
+## dev.11: resources, tracks, spectator research and AI towns
+
+2026-11-06. Only Airships **1.2.15.3** is supported from this change onward. Research used its shipped bytecode and private decompilation; no game sources are distributed. The older version references below describe historical investigations.
+
+`CommandButtonsPanel.renderShipQuantities(MyDraw, Airship, int, int, int)` shares one two-row area between command and direct-control panels. Its original 2×2 layout only substitutes repair supplies when another supply has no capacity. `ResourceBarsMixin` replaces that method alone. `client/ResourceBars` uses up to three columns/two rows, retains a resource if its original capacity or current amount is positive, and uses exact quantities in tooltips. Thin bars use native rectangles because `MyDraw.progressBar` insets four pixels and cannot draw a one-to-three-pixel bar. Font measurements bound shortened labels to each cell.
+
+`ShipLayers.ALL` draws tracks in its foreground `TracksAndLegs(false)` pass. `TrackLayersMixin` adds a track-only pass immediately before `Armour`; `TrackRenderingMixin` routes the six `Module.wheels` reads to either the original or new pass. Both `Module.legs` reads stay on the original passes. The same native draw code keeps animation and material behavior; module lists and physics are untouched. `DisplayOptions` stores `tracksBehindArmour` in local `display.json`, default false. It applies to all ships on the client and is not a per-design property or shared campaign rule. The editor toolbar and MOD Details open the same public framework settings window.
+
+The requested research fix concerns **a multiplayer campaign player spectating other empires' combat**. `ClientButtonsMixin` adds a native toolbar button; `SpectatorResearch` checks `MultiplayerCampaignCombatIntent.spectate`, the current combat identities, a player-controlled empire, and `playerCombatSideIndex == -1`. It opens the original `TechScreen(ss)`. Its existing input calls `StrategicScreen.backgroundTick`, and technology actions call `CampaignWorld.giveCommand` for `ss.w.player`; multiplayer commands still go through the native transport and execution path during combat. No local research fields, participant permissions or network protocol are changed. The public `CLIENT_TICK_END` event returns from the native close destination to the same still-active spectator screen, while leaving battle-end/resync/disconnection transitions alone.
+
+`StartValues.aiTowns` is independent of human towns, accepts -1 or 0–8, and defaults to -1 when absent in older configs or frozen rules. The existing shared payload remains version 1. Per-map capacity is the maximum of native slots, human extra settlements and AI towns. `WorldMap$3` chooses counts by empire type, retains contiguous IDs, and only converts human slots into extra cities. Explicit AI counts receive the same bounded landmass guard and exact-count validation; default AI rules retain native behavior. CREATED verifies one city plus the configured towns for each AI without granting it human cash/research. Native early capacity restoration remains unchanged. Acbric 0.3.6 distributes these gameplay rules from the host.
+
+The same dev.11 JAR passes 809 checks on 1.2.15.3 with API 0.3.6 and 0.3.7. Resource output uses a recording canvas, tracks use pass/routing assertions, and spectator commands use a capturing network transport. Full world generation, GPU visuals and a real multiplayer session remain unverified. See [TESTING](TESTING.md) for reproduction and evidence.
+
+## Historical phase one: conquest starting options
 
 2026-09-26. dev.2 implements the feature with 71 targeted checks per game build. Full world generation, initial assets, graphical UI and multiplayer remain unverified; signatures and partial tests are not a compatibility guarantee.
 
@@ -43,7 +76,7 @@ ARC keeps gameplay/configuration in conquest/ and native adapters in mixin/. The
 
 Acbric freezes rules before generation. The first doSetup creates a per-map MapSize capacity copy without changing global Loadables, map dimensions or empire count. All native distance arrays, nest IDs and stage sizes use this capacity. WorldMap$3 skips unused AI/player slots and changes the first human slots into cities at the native income call, before land/buildings are generated. City income uses the native function. PR #1 assigns contiguous IDs to newly created settlements at placement return, preventing gaps from terminating native territory tracing. IDs remain vanilla when no slots are skipped; existing saves are not renumbered. WorldMap$4 caps ritual sites to available towns. Failed placement aborts; CREATED rechecks counts and sets cash before autosave. No StrategicScreen/load/restore grants are installed.
 
-Configuration/UI/shared rules reuse public APIs. A technical `arcStartingLayout={version:1,slots:N}` field restores native ID capacity early in WorldMap deserialization, before normal post-construction MOD storage is available; it is not gameplay configuration and never reads local candidates. Native OutPipe/state and disk saves are checked. Old saves missing ARC rules are rejected, not automatically adopted. Multiplayer requires identical settings set beforehand; full sessions remain unverified. No new framework interfaces are introduced. Metadata rejects the legacy Starting Cities MOD.
+Configuration/UI/shared rules reuse public APIs. A technical `arcStartingLayout={version:1,slots:N}` field restores native ID capacity early in WorldMap deserialization, before normal post-construction MOD storage is available; it is not gameplay configuration and never reads local candidates. Native OutPipe/state and disk saves are checked. Old saves missing ARC rules are rejected, not automatically adopted. The original multiplayer implementation required matching local settings; since Acbric 0.3.6 the host distributes the snapshot for clients to validate and adopt. Full sessions remain unverified. No new framework interfaces are introduced. Metadata rejects the legacy Starting Cities MOD.
 
 Test vanilla-default equivalence, count bounds/zero towns, insufficient space, consecutive worlds, exact cash, save/load without repeated application, bilingual UI/scroll/Enter behavior and any multiplayer paths explicitly supported. Do not claim universal compatibility with map sizes or other world-generation MODs.
 

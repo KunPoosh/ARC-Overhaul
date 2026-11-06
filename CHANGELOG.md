@@ -1,8 +1,43 @@
 # ARC Overhaul changes
 
+## 0.1.0-dev.16 — 2026-11-06
+
+Fix landships moving across the campaign map at their old air-drag-only speed despite the corrected panel value. `FleetSpeedMixin` supplies the existing ground-friction formula to native fleet movement and removes the `0.03` speed floor (about 15.4 km/h) for groups containing landships. Low-supply return uses that value as a ceiling, so it cannot accelerate an even slower ship; both route previews are updated too. Native active/reserve limits, captain/medal bonuses, owner map-speed multipliers, upper cap and airship-only behavior remain in place. Strategic calculations ignore stale combat environment references. No new setting or save field is added.
+
+A synthetic landship displaying 2 km/h moved at 60.85 km/h under dev.15. It now moves at its corrected 1.795 km/h before display rounding; 600 native road ticks advance 2.617 map units in 60 seconds instead of the old formula's 88.741. All **1,148 checks pass** on game 1.2.15.3 and the pinned API 0.3.7 artifact, including 55 new speed checks. The final tests reproduce the mismatch on dev.15. Evidence and limits: [TESTING](TESTING.md). No player installation or save was overwritten.
+
+## 0.1.0-dev.15 — 2026-11-06
+
+Fix the editor crashing after opening ARC display: native scroll handling dereferenced the null cursor supplied by modal input capture. Two guarded field reads preserve native ticks and input capture. No framework replacement is required. All 1,093 checks pass; the same new regression reproduces the exact `UniScreen.java:955` exception on dev.14. See TESTING for evidence.
+
+## dev.14 — 2026-11-06
+
+dev.14 restores full-height, native framed resource bars beside the labels while retaining all five resources in two rows. At very small scales where a row is shorter than the native fixed padding, a one-pixel frame keeps the fill visible. Starting options now include independent AI cities (1-4) and towns (0-8), each accepting -1 for vanilla. AI cities use native AI income; extra slots include both cities and towns. Missing `aiCities` in old rules reads as -1. Range labels use font-safe separators.
+
+Game 1.2.15.3 / API 0.3.7: **1,079 checks pass**; evidence `build/runtime-tests/dev14-final/summary.json`, JAR SHA256 `7400c17a72ffe93b865dc2989f6f809ee014fe70c9ad20152e4732657abca436`. New checks cover mixed settlement counts, native AI income, save restoration, and native resource drawing through a recording Frame at 50/100/125/150/200%. GPU appearance, full world generation and real multiplayer remain manual checks. The installed game has not been replaced.
+
+
+## 0.1.0-dev.13 — 2026-11-06 (unreleased)
+
+dev.13 integrates the four dev.11 features with dev.12 percentage UI scaling. The installed dev.12 was built from dev.10 plus commit `62b8f1c`; it never contained the resource, track, spectator or AI-town changes. Both test suites now run together: **907 checks pass on game 1.2.15.3 / API 0.3.7**, recorded in `build/runtime-tests/dev13-integrated/summary.json`. JAR SHA256: `80886894a18f38ce5727b42028a7fd765da4268a9a0d2fae3e1ca67c603de81b`. Packaged classes and Mixin registrations were checked too. GPU visuals and real multiplayer remain unverified; the running installation was not replaced.
+
+UI scaling is available through native Settings, MOD Details, or the conquest setup list: **ARC Overhaul: UI scale**. Enable custom scaling and choose 50–200%; 100% is native Small. It is a local preference and requires API 0.3.7.
+
+
 [中文](CHANGELOG.zh-CN.md)
 
 ## Unreleased
+
+### 0.1.0-dev.11 — 2026-11-06
+
+- Limit supported game versions to **1.2.15.3**; require Acbric API 0.3.6 or a later compatible version.
+- Fit crew, ammo, water, coal and repair into a responsive two-row resource area in command and direct-control panels. Exhausted resources retain their original capacity; narrow text has exact tooltips.
+- Add **Tracks behind armour** in **ARC Overhaul: Display**, also accessible from the ship editor's **ARC display** button. Switch between vanilla foreground tracks and tracks behind armour/decorations. This is a persistent local option for all ships; legs and physics keep their behavior.
+- Add **Research** / R while a multiplayer campaign player spectates other empires' battle. Use the native technology tree and own-empire network commands, keep combat advancing, and return to the same ongoing battle when closing research.
+- Add independent **AI starting towns**, -1 for native rules or 0–8 per AI empire, applied to new campaigns through host-authoritative frozen rules. Preserve one AI city, native early save capacity, and old rules without `aiTowns`.
+- Build passes. **809 checks pass on game 1.2.15.3** with both API 0.3.6 and 0.3.7, using the same JAR: `build/runtime-tests/features-final-api036/summary.json` and `features-6/summary.json`. SHA256 `0d4bfe37be77642f4b9d02dc92fac62d8b032855bd7a7e4f7d89ccb436c2976c`. Recording-canvas, routing and capturing-transport checks do not establish GPU or real multiplayer acceptance; full world/initial-assets generation also remains manual. No player installation was overwritten. See [TESTING](TESTING.md).
+
+### Earlier development records
 
 - The AI fleet settings window now fits large fleet packs: it is **paged and searchable** (40 rows per page) and filters by ID, display name or source MOD, case-insensitively. The window used to build one row per loaded fleet in a single component tree, and the framework's tree limit is 512 nodes, so roughly 71 fleets made the whole window fail to construct (`UI tree: depth <=24, unique nodes <=512` — for the player the settings page simply refused to open). With paging, 48 fleets stay far below the limit, so the page opens even for players still running the older framework.
 - The settings page now runs a **read-only fleet source check** (`conquest/FleetSources.java`): it scans `ConstructionStrategy/*.json` of the enabled native MODs and turns three otherwise invisible causes of lost fleets into readable notes — a fleet ID declared by several MODs (the game registers fleets in a name-keyed `Loadable` table and `load()` only does `putAll`, so the **last one loaded silently replaces** the earlier one and the replaced fleet never appears in any list), declarations without a `name` (the game skips them without even a failure record), and display names containing characters the game's own search box cannot type (the native file screen uses the game font's character set as an input allow-list, so those characters are swallowed and the fleet can never be found by name). Affected rows say why in their tooltip, with the source folder.
