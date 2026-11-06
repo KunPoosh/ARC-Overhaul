@@ -697,6 +697,7 @@ public final class ArcRuntimeProbe {
         check(field(crew,crewman,"strafeTo")==null,"no aim point is not an error");
     }
     public static void main(String[] args) throws Exception {
+        UiScaleRuntimeChecks.run();
         for(String name:List.of("WorldMap","WorldMap$2","WorldMap$3","WorldMap$4","GameSetupScreen","CampaignWorld","WorldGenScreen","Crewman")) {
             Class<?> type=Class.forName("com.zarkonnen.airships."+name);
             check(Arrays.stream(type.getDeclaredMethods()).anyMatch(m->m.getName().contains("arc$")||m.getName().contains("acbric$")),"real mixin transformation: "+name);
