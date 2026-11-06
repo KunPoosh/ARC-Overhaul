@@ -24,7 +24,7 @@ public abstract class WorldMapMixin implements GenerationAccess {
         WorldMap map = (WorldMap)(Object)this;
         StartValues options = StartingOptions.forMap(map);
         arc$baseTowns = map.size.townsPerEmpire;
-        int slots = options.changesLand() ? Math.max(arc$baseTowns, options.extraSlots(arc$baseTowns)) : arc$baseTowns;
+        int slots = options.capacity(arc$baseTowns);
         // 避免极端地图尺寸新增数百 MB 数组；原版自身的内存占用不在此改变。
         long extraBytes = (long)(slots - arc$baseTowns) * map.size.empires * map.size.gridSize * map.size.gridSize;
         if (extraBytes > 128L * 1024 * 1024)

@@ -30,20 +30,24 @@ public final class StartingOptions {
         context.logger().info("ARC starting options loaded / ARC 开局设置已加载");
         return config;
     }
-    public static String title() { return text("ARC Overhaul: Player starting options", "ARC 大修：玩家开局设置"); }
+    public static String title() { return text("ARC Overhaul: Starting options", "ARC 大修：开局设置"); }
     public static StartValues forMap(WorldMap map) { return ArcRules.startValues(map); }
     public static void open() { ui.open(window()); }
     public static UiWindow window() {
         var effect = ConfigField.Effect.NEW_CAMPAIGN;
         var fields = List.of(
             ConfigField.integer("cities", new ConfigField.Text("Cities per human empire", "每个人类势力的城市数"), -1, StartValues.MAX_CITIES, effect)
-                .description(new ConfigField.Text("-1: vanilla (1). Otherwise 1–4; 0 is invalid.", "-1：原版（1 座）。自定义为 1–4，不能填 0。")),
+                .description(new ConfigField.Text("-1: vanilla (1). Otherwise 1 - 4; 0 is invalid.", "-1：原版（1 座）。自定义为 1 - 4，不能填 0。")),
             ConfigField.integer("towns", new ConfigField.Text("Towns per human empire", "每个人类势力的城镇数"), -1, StartValues.MAX_TOWNS, effect)
-                .description(new ConfigField.Text("-1: map default. Otherwise 0–8. AI counts remain vanilla.", "-1：地图默认。自定义为 0–8。AI 数量保持原版。")),
+                .description(new ConfigField.Text("-1: map default. Otherwise 0 - 8. Independent of AI towns.", "-1：地图默认。自定义为 0 - 8。与 AI 城镇数独立。")),
+            ConfigField.integer("aiCities", new ConfigField.Text("Cities per AI empire", "每个 AI 势力的城市数"), -1, StartValues.MAX_CITIES, effect)
+                .description(new ConfigField.Text("-1: vanilla (1). Otherwise 1 to 4; 0 is invalid. Independent of AI towns. The host settings apply in multiplayer.", "-1：原版（1 座）。自定义为 1 至 4，不能填 0。与 AI 城镇数独立；联机以房主设置为准。")),
+            ConfigField.integer("aiTowns", new ConfigField.Text("Towns per AI empire", "每个 AI 势力的城镇数"), -1, StartValues.MAX_TOWNS, effect)
+                .description(new ConfigField.Text("-1: map default. Otherwise 0 - 8; independent of AI cities. New campaigns only; the host's settings apply in multiplayer.", "-1：地图默认。自定义为 0 - 8；与 AI 城市数独立。仅新战役生效；联机以房主设置为准。")),
             ConfigField.integer("cash", new ConfigField.Text("Player starting cash", "玩家开局现金"), -1, StartValues.MAX_CASH, effect)
-                .description(new ConfigField.Text("-1: vanilla. Otherwise 0–1000000 AFTER starting assets. New campaigns only; in a lobby the host's settings apply to everyone.", "-1：原版。自定义为 0–1000000，在初始资产配置后设置。仅新战役生效；联机时以房主设置为准，其他玩家自动采用。")),
+                .description(new ConfigField.Text("-1: vanilla. Otherwise 0 - 1000000 AFTER starting assets. New campaigns only; in a lobby the host's settings apply to everyone.", "-1：原版。自定义为 0 - 1000000，在初始资产配置后设置。仅新战役生效；联机时以房主设置为准，其他玩家自动采用。")),
             ConfigField.integer("research", new ConfigField.Text("Player starting research points", "玩家开局研发点"), 0, StartValues.MAX_RESEARCH, effect)
-                .description(new ConfigField.Text("0: no points granted (vanilla). Otherwise 0–10000000 banked as unassigned research and poured into the first tech you pick. Scale reference: one tier-0 technology costs about 2,240,000 points. New campaigns only.", "0：不发放，等同原版。自定义为 0–10,000,000，作为未分配研发点存入，在你选定第一个科技时全部注入。量级参考：一项 0 级科技约需 2,240,000 点。仅新战役生效；联机时以房主设置为准。")));
+                .description(new ConfigField.Text("0: no points granted (vanilla). Otherwise 0 - 10000000 banked as unassigned research and poured into the first tech you pick. Scale reference: one tier-0 technology costs about 2,240,000 points. New campaigns only.", "0：不发放，等同原版。自定义为 0 - 10,000,000，作为未分配研发点存入，在你选定第一个科技时全部注入。量级参考：一项 0 级科技约需 2,240,000 点。仅新战役生效；联机时以房主设置为准。")));
         try { return SettingsUi.window(title(), new ConfigEditor(config, fields), applied -> ArcRules.publish()); }
         catch (IOException ex) { throw new IllegalStateException("Cannot open ARC settings / 无法打开 ARC 设置", ex); }
     }
@@ -53,10 +57,13 @@ public final class StartingOptions {
         GenerationAccess generation = (GenerationAccess) world.map;
         if (values.changesLand()) {
             for (Empire empire : world.map.empires) {
-                if (!empire.playerControlled) continue;
+                if (!values.changesLand(empire.playerControlled)) continue;
                 long cities = empire.cities.stream().filter(city -> !city.isTown).count();
                 long towns = empire.cities.size() - cities;
-                if (cities != values.cityCount() || towns != values.townCount(generation.arc$originalTowns()))
+                int expectedCities = values.cityCount(empire.playerControlled);
+                int expectedTowns = empire.playerControlled ? values.townCount(generation.arc$originalTowns())
+                    : values.aiTownCount(generation.arc$originalTowns());
+                if (cities != expectedCities || towns != expectedTowns)
                     throw new IllegalStateException("ARC: Not enough settlement space. Reduce counts or use a larger map. / ARC：可用领地位置不足，请减少数量或增大地图。");
             }
         }
@@ -72,7 +79,7 @@ public final class StartingOptions {
 
     /**
      * 原生把 {@code unassignedResearchPoints} 当作「未分配研发池」。选择科技的命令
-     * （{@code CampaignWorld} 的 set-research 执行器，字节码 223–312）顺序是：先把旧研究的进度
+     * （{@code CampaignWorld} 的 set-research 执行器，字节码 223 - 312）顺序是：先把旧研究的进度
      * 存进 {@code partialResearchPoints}，再把 {@code researchPoints} 覆盖成该研究在
      * {@code partialResearchPoints} 里的值（新研究通常就是 0），最后才把未分配池整池加进去并清零。
      *

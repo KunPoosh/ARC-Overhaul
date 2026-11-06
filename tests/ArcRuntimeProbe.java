@@ -189,11 +189,11 @@ public final class ArcRuntimeProbe {
         for (int i=0; i<empireCount; i++) {
             Empire empire=map.empires.get(i);
             int expected=empire.playerControlled ? values.cityCount()+values.townCount(base.townsPerEmpire)
-                : 1+base.townsPerEmpire;
+                : values.cityCount(false)+values.aiTownCount(base.townsPerEmpire);
             if (failAI && i==1) expected--;
             check(empire.cities.size()==expected,label+" settlement count for empire "+i);
             check(empire.cities.stream().filter(city -> !city.isTown).count()
-                ==(empire.playerControlled ? values.cityCount() : 1),label+" city types for empire "+i);
+                ==values.cityCount(empire.playerControlled),label+" city types for empire "+i);
             for (City city:empire.cities) {
                 settlements.add(city);
                 ids.add(city.id);
@@ -702,8 +702,8 @@ public final class ArcRuntimeProbe {
             check(Arrays.stream(type.getDeclaredMethods()).anyMatch(m->m.getName().contains("arc$")||m.getName().contains("acbric$")),"real mixin transformation: "+name);
         }
         rules=(SharedRules)field(null,ArcRules.class,"rules");check(rules!=null,"real ARC initializer declared rules");
-        Lang.currentLocale=Locale.forLanguageTag("chi");check(StartingOptions.title().contains("玩家"),"Chinese follows game");
-        Lang.currentLocale=Locale.ENGLISH;check(StartingOptions.title().contains("Player"),"English follows game");
+        Lang.currentLocale=Locale.forLanguageTag("chi");check(StartingOptions.title().contains("开局"),"Chinese follows game");
+        Lang.currentLocale=Locale.ENGLISH;check(StartingOptions.title().contains("Starting"),"English follows game");
         check(StartingOptions.window()!=null,"settings window builds using real config editor");
         reject(()->new StartValues(0,0,0),"zero cities rejected");reject(()->new StartValues(5,0,0),"cities upper bound");
         reject(()->new StartValues(1,9,0),"town upper bound");reject(()->new StartValues(1,0,-2),"cash lower bound");

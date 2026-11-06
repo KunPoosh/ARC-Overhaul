@@ -22,16 +22,16 @@ public abstract class TownPlacementMixin {
         StartValues values = generation.arc$options();
         if (values == null || !values.changesLand()) return;
         Empire empire = map.empires.get(index % map.size.empires);
-        int slots = empire.playerControlled ? values.extraSlots(generation.arc$originalTowns()) : generation.arc$originalTowns();
+        int slots = values.extraSlots(empire.playerControlled, generation.arc$originalTowns());
         if (index / map.size.empires >= slots) cir.setReturnValue(true);
     }
     @Redirect(method = "run(ILcom/zarkonnen/airships/WorldMap;)Z", at = @At(value = "INVOKE",
         target = "Lcom/zarkonnen/airships/WorldMap;access$700(Lcom/zarkonnen/airships/WorldMap;ZLcom/zarkonnen/airships/City;Lcom/zarkonnen/airships/GuardedRandom;)I"))
     private int arc$settlementIncome(WorldMap map, boolean human, City city, GuardedRandom random, int index, WorldMap ignored) {
         StartValues values = ((GenerationAccess) map).arc$options();
-        if (values != null && values.changesLand() && human && index / map.size.empires < values.cityCount() - 1) {
+        if (values != null && values.changesLand(human) && index / map.size.empires < values.cityCount(human) - 1) {
             city.isTown = false;
-            return ((WorldMapAccess) map).arc$cityIncome(true, city, random);
+            return ((WorldMapAccess) map).arc$cityIncome(human, city, random);
         }
         return ((WorldMapAccess) map).arc$townIncome(human, city, random);
     }
@@ -60,7 +60,7 @@ public abstract class TownPlacementMixin {
      * 湖心沙洲都算合格，于是新增城镇可能生成在与任何地块都不相连的小岛上（战略地图上只有一小块
      * 领土、也修不出道路）。这里在原生结果之上加一道「连通陆地必须够大」的检查，不合格就重新选址。
      *
-     * <p>只对人类势力、且 ARC 确实改动了领地设置时生效；AI 与默认设置完全走原生结果。重试次数用尽
+     * <p>只对 ARC 自定义了数量的势力生效；未自定义的一方完全走原生结果。重试次数用尽
      * 后返回最后一个落点，因此不会因为保护逻辑把生成变成失败。</p>
      */
     @Redirect(method = "run(ILcom/zarkonnen/airships/WorldMap;)Z", at = @At(value = "INVOKE",
@@ -70,7 +70,7 @@ public abstract class TownPlacementMixin {
         WorldMapAccess access = (WorldMapAccess) map;
         Utils.Pair<Integer, Integer> spot = access.arc$findMapLocationSpot(random, distance, empire);
         StartValues values = ((GenerationAccess) map).arc$options();
-        if (values == null || !values.changesLand() || !empire.playerControlled) return spot;
+        if (values == null || !values.changesLand(empire.playerControlled)) return spot;
         int minimum = arc$landMinimum(map);
         Utils.Pair<Integer, Integer> last = spot;
         for (int attempt = 0; attempt < ARC_SPOT_ATTEMPTS && last != null
@@ -114,7 +114,8 @@ public abstract class TownPlacementMixin {
         if (values == null || !values.changesLand()) return;
         Empire empire = map.empires.get(index % map.size.empires);
         int slot = index / map.size.empires;
-        if (empire.playerControlled && slot < values.extraSlots(generation.arc$originalTowns()) && empire.cities.size() != slot + 2)
-            throw new IllegalStateException("ARC: Cannot place all player settlements. Reduce counts or enlarge the map. / ARC：玩家领地位置不足，请减少数量或增大地图。");
+        if (values.changesLand(empire.playerControlled)
+                && slot < values.extraSlots(empire.playerControlled, generation.arc$originalTowns()) && empire.cities.size() != slot + 2)
+            throw new IllegalStateException("ARC: Cannot place all configured settlements. Reduce counts or enlarge the map. / ARC：自定义领地位置不足，请减少数量或增大地图。");
     }
 }
