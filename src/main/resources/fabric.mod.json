@@ -4,10 +4,10 @@
   "version": "${version}",
   "name": "ARC Overhaul",
   "license": "MIT",
-  "description": "ARC Overhaul: human starting cities, towns, cash and research points, plus full control over which AI fleets appear on the map / ARC 大修：人类玩家开局城市、城镇、现金与研发点设置，并可完全控制大地图上出现哪些 AI 舰队。",
+  "description": "ARC Overhaul: human starting cities, towns, cash and research points, percentage UI scaling and full control over which AI fleets appear on the map / ARC 大修：人类玩家开局城市、城镇、现金与研发点设置，百分比界面大小，并可完全控制大地图上出现哪些 AI 舰队。",
   "environment": "client",
   "entrypoints": {"acbric": ["net.poosh.arc.ArcMod"]},
   "mixins": ["arc.mixins.json"],
   "breaks": {"acbric_starting_cities": "*"},
-  "depends": {"acbric_api": ">=0.3.3-dev.21", "java": ">=21", "airships": "*"}
+  "depends": {"acbric_api": ">=0.3.7", "java": ">=21", "airships": "*"}
 }

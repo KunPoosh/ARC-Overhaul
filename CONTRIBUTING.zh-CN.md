@@ -8,7 +8,7 @@
 
 1. 将仓库克隆到任意目录；本地文件夹名不决定 MOD ID。
 2. 安装 JDK 21，把 `JAVA_HOME` 设为其根目录，不能只使用 JRE。目前验证的开发环境为 Windows；集成检查还需要 Python 3.10 或更新版本。
-3. 准备提供 API **0.3.3-dev.21 或更新兼容版本**的 Acbric 开发副本/构建。本项目基线为 Acbric 提交 `1be89b2`，不能默认上游主分支已经包含它；如未公开，请向维护者索取匹配修订。按照框架文档构建，包含生成 `loader-libs` 的 `distDir` 任务。
+3. 准备提供 API **0.3.7 或更新兼容版本**、包含 `UiScale` 的 Acbric 开发副本/构建，不能默认上游主分支已经包含它。按照框架文档构建，包含生成本地 `loader-libs` 的 `distDir` 任务（该旧布局包包含私有游戏文件，不可分享）。
 4. 在仓库外准备自己拥有的游戏依赖：`asplit-A.zip`、`asplit-B.zip` 和配套库 JAR。本仓库不提供游戏字节码、资源或反编译文件。
 5. 按实际路径构建：
 
@@ -18,7 +18,7 @@
 
 默认使用相邻 `../Acbric`，包括其中 `libs` 的游戏库。首次可能下载 Gradle 8.13，缓存准备好后才可加 `--offline`。机器路径可以写在已忽略的项目 `gradle.properties`（`acbricDir=...`、`gameLibDir=...`），建议使用正斜杠。构建不会读取 `local.properties`。
 
-输出仅为 MOD：`build/libs/ARC-Overhaul-0.1.0-dev.9.jar`，不组装完整游戏，也不自动安装。安装时替换旧 ARC JAR；新旧名称的 ID 都是 `arc_overhaul`，不可同时保留启用。
+输出仅为 MOD：`build/libs/ARC-Overhaul-0.1.0-dev.12.jar`，不组装完整游戏，也不自动安装。安装时替换旧 ARC JAR；新旧名称的 ID 都是 `arc_overhaul`，不可同时保留启用。
 
 ## 开发与评审
 

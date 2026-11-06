@@ -8,7 +8,7 @@ ARC Overhaul is an independent gameplay MOD for Airships: Conquer the Skies, pow
 
 1. Clone this repository into any directory. The local folder name does not determine the MOD ID.
 2. Install JDK 21 and set `JAVA_HOME` to its root (a JRE is insufficient). Windows is the currently validated development environment. Integration checks also require Python 3.10 or newer.
-3. Obtain a matching Acbric development checkout/build with API **0.3.3-dev.21 or a later compatible version**. The baseline used here is Acbric commit `1be89b2`; do not assume the upstream default branch already contains it. Obtain the matching revision from the maintainer if unavailable. Build it according to its documentation, including `distDir` to produce `loader-libs`.
+3. Obtain a matching Acbric development checkout/build with API **0.3.7 or a later compatible version**, including `UiScale`. Do not assume the upstream default branch already contains it. Build it according to its documentation, including `distDir` to produce local `loader-libs` (that legacy distribution contains private game files and must not be shared).
 4. Keep your own game libraries outside this repository. Prepare `asplit-A.zip`, `asplit-B.zip`, and the supporting library JARs. No game binaries, assets or decompiled files are supplied here.
 5. Build using the actual local paths:
 
@@ -18,7 +18,7 @@ ARC Overhaul is an independent gameplay MOD for Airships: Conquer the Skies, pow
 
 The default is a sibling `../Acbric` directory, including its `libs` for game libraries. First use may download Gradle 8.13; add `--offline` only after it is cached. Machine-specific overrides can be placed in the ignored project `gradle.properties` (`acbricDir=...`, `gameLibDir=...`); use forward slashes. `local.properties` is not read by the build.
 
-This generates only the MOD, `build/libs/ARC-Overhaul-0.1.0-dev.9.jar`. It does not assemble or install a full game. Replace the older ARC JAR when installing; both names use the same `arc_overhaul` ID. Never install both.
+This generates only the MOD, `build/libs/ARC-Overhaul-0.1.0-dev.12.jar`. It does not assemble or install a full game. Replace the older ARC JAR when installing; both names use the same `arc_overhaul` ID. Never install both.
 
 ## Work and review
 
