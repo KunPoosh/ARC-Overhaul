@@ -13,7 +13,8 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  * {@code ShipEditorUtils.getStats}，这里把取速度的那一次调用换成等效速度。
  * 原版公式漏掉弹簧接地摩擦，陆行舰的面板速度会比实际高 2–6 倍。
  *
- * <p>AI、地图移动与 {@code engineForceForX} 的刹车预演都不经过这里，行为保持原版。</p>
+ * <p>战略移动由 {@code FleetSpeedMixin} 接入同一有效速度；战斗 AI 与
+ * {@code engineForceForX} 的刹车预演不经过这里，仍保持原版。</p>
  */
 @Mixin(targets = "com.zarkonnen.airships.ShipEditorUtils", remap = false)
 public abstract class ShipSpeedReportMixin {

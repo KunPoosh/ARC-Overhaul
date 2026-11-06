@@ -1,5 +1,5 @@
 /* EffectiveSpeed.java — 把弹簧的接地摩擦并入有效速度：面板速度按稳态方程 F/m = f·v² + λ·v 求解，
-   让编辑器与战略/战斗面板显示的速度与实际战斗中能达到的稳态速度一致。 */
+   供编辑器、战略/战斗面板与战略舰队移动共用同一稳态速度。 */
 package net.poosh.arc.speed;
 
 import com.zarkonnen.airships.*;
@@ -103,23 +103,36 @@ public final class EffectiveSpeed {
      */
     public static double effectiveSpeed(Airship ship) {
         if (ship == null) return 0.0;
-        Combat combat = ship.CURRENT_COMBAT_DELETEME;
+        return effectiveSpeed(ship, ship.CURRENT_COMBAT_DELETEME);
+    }
+
+    private static double effectiveSpeed(Airship ship, Combat combat) {
         double ground = groundFrictionRate(springFrictions(ship), TICK_MS, GroundLoad.loadFraction(ship, combat));
-        double air = ship.frontAirFriction() * waterMultiplier(ship);
+        double air = ship.frontAirFriction() * waterMultiplier(ship, combat);
         return StrictMath.min(ship.getMaxXSpeed(), steadySpeed(ship.getPropulsion(), ship.getMass(), air, ground));
     }
 
-    /** 面板用的地图速度：与原生 {@code Airship.getMainMapSpeed} 同口径，只是速度换成等效速度。 */
+    /** 面板速度保留战斗现场上下文，沿用原生地图倍率。 */
     public static double mainMapSpeed(Airship ship, BonusSet bonuses) {
-        double mult = ship.type.onGround
+        return effectiveSpeed(ship) * mapMultiplier(ship, bonuses);
+    }
+
+    /**
+     * 战略速度使用设计载荷与空气阻力。CURRENT_COMBAT_DELETEME 在战斗 tick 中赋值但不会在结束时清空；
+     * 大地图不能继承旧战场的水阻、失效模块或局部升力环境，也不能依赖本机是否持有战斗上下文。
+     */
+    public static double strategicMapSpeed(Airship ship, BonusSet bonuses) {
+        return effectiveSpeed(ship, null) * mapMultiplier(ship, bonuses);
+    }
+
+    private static double mapMultiplier(Airship ship, BonusSet bonuses) {
+        return ship.type.onGround
                 ? EmpireStat.LANDSHIP_MAP_SPEED_MULT.get(bonuses)
                 : EmpireStat.AIRSHIP_MAP_SPEED_MULT.get(bonuses);
-        return effectiveSpeed(ship) * mult;
     }
 
     /** 水里的阻力倍率沿用原版 {@code GridBody.frictionMult}；拿不到战斗上下文时为 1。 */
-    private static double waterMultiplier(Airship ship) {
-        Combat combat = ship.CURRENT_COMBAT_DELETEME;
+    private static double waterMultiplier(Airship ship, Combat combat) {
         if (combat == null || combat.landFormations == null || combat.landFormations.isEmpty()) return 1.0;
         try {
             return ship.frictionMult(combat);

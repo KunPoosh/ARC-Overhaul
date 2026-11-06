@@ -813,6 +813,7 @@ public final class ArcRuntimeProbe {
         checkLandPlacement();
         checkEffectiveSpeed();
         checkGroundLoad();
+        FleetSpeedRuntimeChecks.run();
         checkAircraftStrafe();
         checkOrderedTarget();
         checkFleetOptions();
