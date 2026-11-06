@@ -22,7 +22,8 @@
     "ResourceBarsMixin",
     "TrackLayersMixin",
     "TrackRenderingMixin",
-    "ClientButtonsMixin"
+    "ClientButtonsMixin",
+    "EditorScrollInputMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -17,7 +17,7 @@ import static regression.ArcRuntimeProbe.*;
 
 final class FeatureRuntimeChecks {
     static void run() throws Exception {
-        aiCities(); aiTowns(); resources(); tracks(); spectatorResearch();
+        aiCities(); aiTowns(); resources(); tracks(); spectatorResearch(); EditorDisplayChecks.run();
     }
 
     static void aiCities() throws Exception {
