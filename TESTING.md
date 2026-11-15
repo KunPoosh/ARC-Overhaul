@@ -1,6 +1,14 @@
 # ARC Overhaul test guide
 
-## Current: dev.16
+## Current: dev.17 — 2026-11-15
+
+Game 1.2.15.3 / pinned API 0.3.7: **1,225 checks pass** (1,148 existing + 77 new). Evidence: `build/runtime-tests/dev17-routes-2/summary.json`; ARC SHA256 `d9d4819423a0e684bf9326c5ef1157636b9cdb9e88f39bcb5748041a8974b77d`. The final suite against dev.16 fails at the expected island-capital connection assertion in `build/runtime-tests/dev17-negative-final/v153/runtime.log`. Gradle passes with the same pinned dependencies as dev.16 below.
+
+`StartingConnectionChecks` runs native settlement placement, land/sea stages, road thinning/smoothing, cache filling, capital access and `City.unrest`. It covers an island capital with an inland town, exact removal/restoration of the disconnection penalty, foreign-city/nest avoidance, land detours before sea crossings, unchanged defaults/cash-only settings, independent human/AI rules, zero extras, repeated calls, RNG preservation, and six seeds including 4 cities + 8 towns per empire (the maximum case repeats for determinism). Shipped bytecode verifies smoothing after thinning; Knot installs the handler on the real class. Static-map serialization preserves both repaired and severed roads; empire fixtures are reattached afterward, so this is not a full campaign-save test. Terrain and road candidate pairs are synthetic. No player's save, full world/initial assets, GPU rendering or real multiplayer is tested.
+
+Manual acceptance: start a new customized campaign with an island capital and inland extra settlements; verify a usable road/sea connection and no disconnection unrest at game start. Sea crossings must remain unavailable to landships. Save/reload and verify the same route. Loading an older disconnected campaign must leave its roads unchanged. The fix was built but not installed into the player's game.
+
+## dev.16
 
 Game 1.2.15.3 / pinned API 0.3.7: **1,148 checks pass** (1,093 existing + 55 new). Evidence: `build/runtime-tests/dev16-final/summary.json`; ARC SHA256 `bf253562b1ad9cb8005059b8b82c66438606de161bddb4983f53372ff20ecc23`. Final tests against dev.15 fail at the expected speed mismatch in `build/runtime-tests/dev16-negative-final/v153/runtime.log`: a 2 km/h panel fixture travels at 60.85 km/h, and a weaker fixture with native ship speed `0.003162` is lifted to `0.03`. With dev.16, the same fixtures travel at `0.0034899565` and `0.0000049950` respectively.
 
@@ -51,7 +59,7 @@ dev.9 adds T orders against defenceless targets and T orders given to unarmed ca
 ## Install and open
 
 1. Exit the game. Use game 1.2.15.3 and API 0.3.7 or a later compatible version. Disable Starting Cities and restart, or keep its JAR outside `mods/`. Install only one ARC version.
-2. Copy `build/libs/ARC-Overhaul-0.1.0-dev.15.jar` to the running copy's `game/mods/`, replacing the old ARC JAR. No installed copy was overwritten by the build. **After copying, check its SHA256 against the dev.13 value above** (`Get-FileHash <jar> -Algorithm SHA256`).
+2. Copy `build/libs/ARC-Overhaul-0.1.0-dev.17.jar` to the running copy's `game/mods/`, replacing the old ARC JAR. No installed copy was overwritten by the build. **After copying, check its SHA256 against the dev.17 value above** (`Get-FileHash <jar> -Algorithm SHA256`).
 3. Start a new single-player conquest setup. Scroll its settings list to the bottom and select **ARC Overhaul: Starting options**, or use **MOD list → ARC Overhaul → Details**.
 4. Edit, Apply, close, then use the native Start button. Counts and cash accept `-1` for vanilla; research defaults to `0`. Fields are independent.
 5. Do the same with the second entry, **ARC Overhaul: AI fleets**; it lists every loaded AI fleet and is described in [AI fleets](README.md#ai-fleets).
@@ -157,7 +165,7 @@ Use Python 3.10+, JDK 21 (`JAVA_HOME` or `--java-home`) and a built ARC Overhaul
 ```powershell
 python tests/run_runtime.py --tag first-check --acbric-dir "D:/Development/Acbric" --game "steam=D:/Games/Airships"
 # Select the dev.11 artifact explicitly if multiple local builds exist:
-python tests/run_runtime.py --tag dev11 --arc-jar "build/libs/ARC-Overhaul-0.1.0-dev.15.jar" --game "v153=D:/Games/Airships"
+python tests/run_runtime.py --tag dev17 --arc-jar "build/libs/ARC-Overhaul-0.1.0-dev.17.jar" --game "v153=D:/Games/Airships"
 ```
 
 Output defaults to `build/runtime-tests/<tag>/`: `summary.json` records counts and MOD/API/game input hashes; each labelled directory has `runtime.log`. Each tag must be new. `--output-root` changes the destination; it must be separate from game inputs. `--arc-jar` selects the artifact if multiple `ARC-Overhaul-*.jar` versions exist in `build/libs`. Check the version separately: labels are chosen by the caller, not detected version numbers.

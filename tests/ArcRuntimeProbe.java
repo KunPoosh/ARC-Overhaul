@@ -811,6 +811,7 @@ public final class ArcRuntimeProbe {
         check(generatedLand==14&&generatedCityLand==4,"actual native placement reaches land hook with correct city types");
         checkTerritoryIds();
         checkLandPlacement();
+        StartingConnectionChecks.run();
         checkEffectiveSpeed();
         checkGroundLoad();
         FleetSpeedRuntimeChecks.run();

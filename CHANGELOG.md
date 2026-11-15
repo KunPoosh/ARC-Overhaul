@@ -1,5 +1,13 @@
 # ARC Overhaul changes
 
+## 0.1.0-dev.17 — 2026-11-15
+
+Fix customized starting settlements being disconnected from an island capital. Native land-road candidates follow territory borders, while sea-route candidates exclude inland towns. After native road thinning, ARC checks capital access and adds missing roads, preferring land and existing routes, with sea crossings when needed. New paths bypass foreign cities and monster nests. Settlement positions, terrain, coastal status and RNG are preserved; native pathfinding and unrest rules remain in force.
+
+Only new campaigns with customized human or AI settlement counts are affected. Default counts and cash-only changes retain native behavior. Loading an existing save never repairs its roads. No new settings or save fields are introduced.
+
+Game 1.2.15.3 / pinned API 0.3.7: **1,225 checks pass**, including 77 new checks. The final suite reproduces the disconnection with dev.16. Evidence and synthetic-fixture limitations: [TESTING](TESTING.md). No installation or push was performed.
+
 ## 0.1.0-dev.16 — 2026-11-06
 
 Fix landships moving across the campaign map at their old air-drag-only speed despite the corrected panel value. `FleetSpeedMixin` supplies the existing ground-friction formula to native fleet movement and removes the `0.03` speed floor (about 15.4 km/h) for groups containing landships. Low-supply return uses that value as a ceiling, so it cannot accelerate an even slower ship; both route previews are updated too. Native active/reserve limits, captain/medal bonuses, owner map-speed multipliers, upper cap and airship-only behavior remain in place. Strategic calculations ignore stale combat environment references. No new setting or save field is added.

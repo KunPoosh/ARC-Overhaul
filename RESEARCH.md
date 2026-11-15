@@ -1,5 +1,13 @@
 # ARC Overhaul implementation research
 
+## dev.17: island capitals and inland starting settlements
+
+On 1.2.15.3, `WorldMap$3` chooses extra settlements without testing capital connectivity. ARC's landmass-size guard only rejects tiny islands. Native road pairs come from territory borders; `WorldMap$11` cannot cross water whose resistance is 10000. `$13` identifies coastal cities and builds navigation nodes; `$14`/`$15` chart sea routes only for those cities. An inland town can therefore remain outside its island capital's network. `isConnectedToCapital` uses an owner-restricted road search, and `City.unrest` applies the normal disconnection penalty. A visible path via a foreign city is not sufficient.
+
+`WorldMapMixin` injects into `smoothRoads()V`, called by `$16` via `access$1400` after skeletonization and before `$17` fills connection caches. `StartingConnections` only runs with frozen generation options and for customized human/AI counts. Each disconnected settlement gets a deterministic 8-neighbor A* route: land first; then mixed land/sea if needed; existing roads have lower costs. Foreign cities and nests block new paths. Separate costs are required because the ocean stage has already overwritten inland resistance. Only `roads` changes; water, settlement IDs/coordinates, territory, coastal attributes and RNG remain intact. Both native connection caches are invalidated after a change; native smoothing and cache filling then proceed.
+
+The constructor also calls smoothing, but generation options are null on load, so no save migration occurs. Failure to find a path aborts generation with a bilingual message before play begins. Tests reproduce the failure with dev.16, check actual native unrest and travel connectivity after repair, and prove that cutting the sea road reinstates the penalty. Scope and evidence: [TESTING](TESTING.md).
+
 ## dev.16: strategic landship speed
 
 On game 1.2.15.3, `Fleet.speed(ArrayList, BonusSet, WorldMap)` takes the slowest `Airship.getMainMapSpeed`, starting with an upper cap of 1.5, applies the largest captain/medal boosts, then clamps the result to at least 0.03. The earlier `ShipSpeedReportMixin` only redirected the panel call, leaving fleet movement on the old air-drag formula. Native `Fleet.tick` multiplies fleet speed by milliseconds and 0.0125; ETA and interception also use fleet speed. A panel value of 2 km/h can therefore coexist with 60.85 km/h on the campaign map, and simply correcting the speed source would still leave the roughly 15.4 km/h floor.

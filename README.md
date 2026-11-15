@@ -1,6 +1,6 @@
 # ARC Overhaul
 
-Current artifact: **dev.16**. Landship campaign movement now uses the ground-friction speed shown on the panel, without the native minimum that accelerated slow ships. Low-supply return and travel estimates agree with that speed. Includes the dev.15 editor fix and all earlier integrated features. Game 1.2.15.3 / the validated API 0.3.7 artifact: 1,148 checks pass. See TESTING for evidence and manual checks.
+Current artifact: **dev.17**. Customized starting settlements now receive missing road/sea connections to island capitals, preventing disconnection unrest caused by incomplete generation. Applies to new campaigns; existing saves are not migrated. Includes the dev.16 landship-speed fix and all earlier integrated features. Game 1.2.15.3 / the validated API 0.3.7 artifact: 1,225 checks pass. See TESTING for evidence and manual checks.
 
 ## dev.14 — 2026-11-06
 
@@ -18,11 +18,11 @@ UI scaling is available through native Settings, MOD Details, or the conquest se
 
 [中文](README.zh-CN.md)
 
-A standalone Airships MOD, separate from Acbric. **0.1.0-dev.16 supports game 1.2.15.3 only**. It includes human starting cities, towns, cash and research, AI fleet selection, AI starting towns, complete five-resource displays, switchable track layers, and research access while spectating multiplayer conquest battles. AI empires keep vanilla cash rules; changes to placement can affect random draws and initial assets.
+A standalone Airships MOD, separate from Acbric. **0.1.0-dev.17 supports game 1.2.15.3 only**. It includes human starting cities, towns, cash and research, AI fleet selection, AI starting towns, complete five-resource displays, switchable track layers, and research access while spectating multiplayer conquest battles. AI empires keep vanilla cash rules; changes to placement can affect random draws and initial assets.
 
 ## Use
 
-Requires Acbric API **0.3.7 or a later compatible version** and Java 21. Exit the game and place `build/libs/ARC-Overhaul-0.1.0-dev.16.jar` in its `game/mods/`. Disable the old `acbric-starting-cities.jar` and restart first; the MODs declare a conflict. Do not install the dev.1 scaffold or fixture JARs.
+Requires Acbric API **0.3.7 or a later compatible version** and Java 21. Exit the game and place `build/libs/ARC-Overhaul-0.1.0-dev.17.jar` in its `game/mods/`. Disable the old `acbric-starting-cities.jar` and restart first; the MODs declare a conflict. Do not install the dev.1 scaffold or fixture JARs.
 
 Open **single-player conquest setup → scroll the settings list to the bottom → ARC Overhaul: Starting options**, or **MOD list → ARC Overhaul → Details**. Edit, Apply, close, then start a new campaign. English/Chinese follow the game language.
 
@@ -99,7 +99,7 @@ Use JDK 21, Acbric API 0.3.7 or a later compatible version, and game 1.2.15.3 li
 .\gradlew.bat build -PacbricDir="D:/Development/Acbric" -PgameLibDir="D:/Games/Airships/libs"
 ```
 
-Output: `build/libs/ARC-Overhaul-0.1.0-dev.16.jar`. Replace the previous ARC JAR instead of installing both. Game, framework and test classes are not bundled. Nothing is automatically installed. `build` checks compilation/packaging; its default `test` has no sources. Run [integration tests](TESTING.md#run-isolated-checks-windows) separately with your own game inputs.
+Output: `build/libs/ARC-Overhaul-0.1.0-dev.17.jar`. Replace the previous ARC JAR instead of installing both. Game, framework and test classes are not bundled. Nothing is automatically installed. `build` checks compilation/packaging; its default `test` has no sources. Run [integration tests](TESTING.md#run-isolated-checks-windows) separately with your own game inputs.
 
 dev.11 passes **809 checks on game 1.2.15.3**, with the same JAR tested on both API 0.3.6 and 0.3.7. Checks include real Fabric transformations, native settlement placement/save restoration, five-resource drawing commands, track routing, and native spectator research commands through a capturing transport. GPU rendering, full world/initial-assets generation and real multiplayer sessions remain manual checks. See [testing](TESTING.md) for evidence and fixtures. Earlier game-version results are historical.
 

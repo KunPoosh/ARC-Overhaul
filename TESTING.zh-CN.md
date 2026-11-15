@@ -1,6 +1,14 @@
 # ARC Overhaul 测试手册
 
-## 当前版本：dev.16
+## 当前版本：dev.17 — 2026-11-15
+
+游戏 1.2.15.3 / 固定 API 0.3.7 **1,225 项通过**（既有 1,148 + 新增 77）。证据：`build/runtime-tests/dev17-routes-2/summary.json`；ARC SHA256 `d9d4819423a0e684bf9326c5ef1157636b9cdb9e88f39bcb5748041a8974b77d`。最终检查对 dev.16 在预期的海岛首都连通断言失败，见 `build/runtime-tests/dev17-negative-final/v153/runtime.log`。Gradle 构建通过，使用下文 dev.16 同一份固定依赖。
+
+`StartingConnectionChecks` 执行真实定居点放置、陆路/海路阶段、道路细化/平滑、缓存、首都连通和 `City.unrest`。覆盖海岛首都＋内陆城镇、原生分离处罚精确消失/重现、绕开敌城/巢穴、优先绕陆路、默认/只改现金不变、人类/AI 独立开关、零额外领地、重复执行、RNG 不变，以及六种种子（含人类/AI 各 4 城市＋8 城镇，最大数量重复一次核对确定性）。发行字节码核对细化之后的平滑调用，Knot 验证处理器真实安装。静态地图序列化保留修复后及人为切断的道路；恢复后重新挂接势力夹具，因此不属于完整战役存档测试。地形与陆路候选为合成输入，未覆盖用户原存档、完整世界/初始资产、GPU 或真实联机。
+
+实机验收：新开自定义领地战役，在海岛首都与额外内陆定居点之间检查道路/航线和开局动乱说明；跨海路线仍不可供陆行舰通行。保存重载后路线应保留；加载旧的断连战役不会自动改路。产物已构建，未安装进玩家游戏。
+
+## dev.16
 
 游戏 1.2.15.3 / 固定的 API 0.3.7 构建 **1,148 项通过**（既有 1,093 + 新增 55）。证据：`build/runtime-tests/dev16-final/summary.json`；ARC SHA256 `bf253562b1ad9cb8005059b8b82c66438606de161bddb4983f53372ff20ecc23`。最终测试在 dev.15 上于预期的速度断言失败，见 `build/runtime-tests/dev16-negative-final/v153/runtime.log`：面板 2 km/h 的夹具在地图上跑 60.85 km/h；更弱夹具的原生单舰速度 `0.003162` 被抬到 `0.03`。dev.16 中两者分别按 `0.0034899565`、`0.0000049950` 移动。
 
@@ -51,7 +59,7 @@ dev.9 新增 T 指令打无武装目标与无武装航母下达 T 指令：游�
 ## 安装与入口
 
 1. 退出游戏，使用游戏 1.2.15.3 与 API 0.3.7 或更新兼容版本。停用旧 Starting Cities 并重启，也可将其 JAR 移到 `mods/` 外保留。不要同时装两个 ARC 版本。
-2. 将 `build/libs/ARC-Overhaul-0.1.0-dev.15.jar` 复制到实际运行副本 `game/mods/`，替换旧 ARC JAR。本工程没有自动覆盖运行包。**复制后核对 SHA256 与上面的 dev.13 证据值一致**（`Get-FileHash <jar> -Algorithm SHA256`）。
+2. 将 `build/libs/ARC-Overhaul-0.1.0-dev.17.jar` 复制到实际运行副本 `game/mods/`，替换旧 ARC JAR。本工程没有自动覆盖运行包。**复制后核对 SHA256 与上面的 dev.17 证据值一致**（`Get-FileHash <jar> -Algorithm SHA256`）。
 3. 开始新的单人征服战役，将原生设置列表滚至最底部，点击 **ARC 大修：开局设置**。另一个入口是 **MOD 列表 → ARC Overhaul → 详情**。
 4. 输入、应用、关闭窗口，再点击游戏原来的开始按钮。数量与现金使用 `-1` 表示原版；研发点默认 `0`。各字段相互独立。
 5. 同样方式打开第二个入口 **ARC 大修：AI 舰队**；它列出所有已加载的 AI 舰队，语义见 [AI 舰队](README.zh-CN.md#ai-舰队)。
@@ -157,7 +165,7 @@ T 指令改动新增 **62 项检查**，同样不启动战斗，分三段。① 
 ```powershell
 python tests/run_runtime.py --tag first-check --acbric-dir "D:/Development/Acbric" --game "steam=D:/Games/Airships"
 # 本地有多个构建时，明确指定 dev.11 产物：
-python tests/run_runtime.py --tag dev11 --arc-jar "build/libs/ARC-Overhaul-0.1.0-dev.15.jar" --game "v153=D:/Games/Airships"
+python tests/run_runtime.py --tag dev17 --arc-jar "build/libs/ARC-Overhaul-0.1.0-dev.17.jar" --game "v153=D:/Games/Airships"
 ```
 
 默认输出 `build/runtime-tests/<tag>/`，`summary.json` 记录检查数、MOD/API/游戏输入哈希，每个标签子目录有 `runtime.log`。每次使用新 tag。`--output-root` 可指定输出目录，必须与游戏输入目录分开。若 `build/libs` 有多个 `ARC-Overhaul-*.jar`，用 `--arc-jar` 明确指定。标签由调用者命名，并非自动识别的游戏版本，报告版本须另外核实。

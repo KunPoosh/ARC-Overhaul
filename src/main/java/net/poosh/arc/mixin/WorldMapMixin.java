@@ -6,6 +6,7 @@ import net.poosh.arc.conquest.*;
 import org.json.JSONObject;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.*;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(value = WorldMap.class, remap = false)
@@ -14,9 +15,20 @@ public abstract class WorldMapMixin implements GenerationAccess {
     @Unique private int arc$baseTowns;
     @Unique private boolean arc$layoutModified;
     @Unique private int arc$nextSettlementId;
+    @Shadow private byte[][] connectionCache;
+    @Shadow private byte[][] empireToCityCapitalConnectionCache;
     @Override public StartValues arc$options() { return arc$values; }
     @Override public int arc$originalTowns() { return arc$baseTowns; }
     @Override public int arc$nextSettlementId() { return arc$nextSettlementId++; }
+
+    /** 生成阶段在道路细化后平滑坐标；读档也调用此方法，但 arc$values 为 null，绝不补路。 */
+    @Inject(method = "smoothRoads()V", at = @At("HEAD"))
+    private void arc$connectStartingSettlements(CallbackInfo ci) {
+        if (StartingConnections.repair((WorldMap)(Object)this, arc$values)) {
+            connectionCache = null;
+            empireToCityCapitalConnectionCache = null;
+        }
+    }
 
     @Inject(method = "doSetup()Z", at = @At("HEAD"))
     private void arc$prepare(CallbackInfoReturnable<Boolean> cir) {
