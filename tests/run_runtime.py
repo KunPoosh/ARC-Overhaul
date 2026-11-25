@@ -51,7 +51,7 @@ for game,base,data in games:
     shutil.copy2(api,run/'game/mods/acbric-api.jar');shutil.copy2(arc,run/'game/mods/arc.jar')
     for name in ['fontmetrics','lang']:shutil.copytree(data/name,run/'game/data'/name)
     cp=';'.join(str(run/n) for n in ['libs/*','loader-libs/*','libs/asplit-A.zip','libs/asplit-B.zip','game/mods/*'])
-    subprocess.run([str(jdk/'javac.exe'),'-J-Dfile.encoding=UTF-8','-J-Dstdout.encoding=UTF-8','-J-Dstderr.encoding=UTF-8','-encoding','UTF-8','-proc:none','-cp',cp,'-d',str(run/'classes'),str(p/'tests/ArcRuntimeProbe.java'),str(p/'tests/fixtures/AssetFixtures.java')],check=True)
+    subprocess.run([str(jdk/'javac.exe'),'-J-Dfile.encoding=UTF-8','-J-Dstdout.encoding=UTF-8','-J-Dstderr.encoding=UTF-8','-encoding','UTF-8','-proc:none','-cp',cp,'-d',str(run/'classes'),str(p/'tests/ArcRuntimeProbe.java'),str(p/'tests/UiScaleRuntimeChecks.java'),str(p/'tests/fixtures/AssetFixtures.java')],check=True)
     with zipfile.ZipFile(run/'libs/arc-probe.jar','w',zipfile.ZIP_DEFLATED) as z:
         for f in (run/'classes').rglob('*.class'):
             if 'fixtures' not in f.parts:z.write(f,f.relative_to(run/'classes').as_posix())

@@ -1,15 +1,27 @@
-# ARC Overhaul starting-options test guide
+# ARC Overhaul test guide
+
+2026-11-06 raster-quality follow-up: Acbric 0.3.7.1 fixes the blurred Small-bitmap enlargement without requiring an ARC update. Runtime checks now require exact native font, CJK fallback and border objects at 100/150/200%; both 1.2.15.2 and 1.2.15.3 pass 729 checks (`build/runtime-tests/ui-scale-sharp-final`). Framework GPU evidence in `build/ui-scale-visual/sharp-after` confirms the 200% ARC panel interior matches native Large pixel-for-pixel at 2560×1600. Other percentages may reflow as the framework now uses native tier fonts/metrics; see its UI contract.
+
+## Current UI scale validation (dev.12, 2026-11-06)
+
+Acbric **0.3.7** and ARC **0.1.0-dev.12** pass **720 checks on each of games 1.2.15.2 / 1.2.15.3** (1,440 total), recorded in `build/runtime-tests/ui-scale-release/summary.json`. This includes 98 new checks for percentage bounds, glyph metrics and crops, native Draw/MyDraw constructor injection, matching button hit regions, the native Settings insertion point and preset actions, bilingual config editors, draft validation, save/reload/defaults and exclusion from shared rules. The verified ARC JAR SHA256 is `396d8a87f81d4be0187fe00d070446bd017908b2665a78c5b2f6b4231c90fe23`.
+
+An additional test-only fixture runs the real 1.2.15.3 GPU renderer in an isolated 1600×900 instance. Screenshots check the menu at 100/125/200%, native Settings at 125%, English/Chinese ARC settings, and restoring vanilla. Framework-local evidence is `build/ui-scale-visual/run7`; all 5,317 original installation files retain their hashes. Screens are opened by the fixture; this is not a human click-through or an end-to-end multiplayer test. At 200% the native menu exceeds a 900-pixel screen, so use a lower percentage for that layout. Fixed native titles retain their original size.
+
+A second isolated launch starts with an existing enabled **137%** config and verifies that it is active before the main menu, then repeats the screenshot sequence (`build/ui-scale-visual/run8/instance/startup-pass.txt` in the framework workspace). The original installation again retains all file hashes.
+
+Player acceptance: open **Settings → UI scale...**, enable and apply 125 or 137, reopen/restart to check persistence, then choose a native preset to restore vanilla. Check mouse/keyboard use, scrolling and layouts in the gameplay screens you use. The older records below describe their own versions and coverage.
 
 dev.9 adds T orders against defenceless targets and T orders given to unarmed carriers: game 1.2.15.2 / 1.2.15.3 each passes **606 checks**, 1,212 total (including the 15 load-friction assertions from feat5 on this branch), recorded in `build/runtime-tests/ordered-target-dev9/summary.json`, JAR SHA256 `f89013758fa04609675cb3057e90c74c86b27493b9360ac8108f0632e2a64d5a`. The four injection points are asserted by parsing the shipped kernel bytecode and another 34 assertions drive the injected handlers on the real kernel classes. The static injection check (`arc verify`) last ran on the **same mixin set** (only the version string differs) and reported OK for all fifteen ARC injections; this round it could not run because the framework has been upgraded to 0.3.5.1 and the tool can no longer materialise its kernel view. The rest of `CommandButtonsPanel.draw`, full world generation, the graphical UI and end-to-end multiplayer remain unverified.
 
 2026-09-27 integration of PRs #3 / #4 / #5: dev.7 combines AI fleet settings, target-relative aircraft strafe points and grounded speed reporting. Conflict resolution retains both Mixin registrations and all test calls, with dev.7 used consistently; feature source semantics are unchanged. Build passed with JDK 21 / Acbric API 0.3.3-dev.33. Game 1.2.15.2 and 1.2.14 each passed 529 checks (1,058 total), recorded in `build/runtime-tests/pr3-5-integrated-20260927/summary.json`. Fleet registration and some assets use fixtures; strafe checks directly invoke the transformed handler. Full world generation, graphical combat, roads/starting assets and end-to-end multiplayer remain unverified. Player installations were not overwritten. Earlier branch-specific records and counts below are historical.
 
-[中文](TESTING.zh-CN.md) · 0.1.0-dev.9 · 2026-09-30
+[中文](TESTING.zh-CN.md) · 0.1.0-dev.12 · 2026-11-06
 
 ## Install and open
 
-1. Exit the game. Use API dev.21 or later compatible. Disable Starting Cities and restart, or keep its JAR outside `mods/`. Install only one ARC version.
-2. Copy `build/libs/ARC-Overhaul-0.1.0-dev.9.jar` to the running copy's `game/mods/`. No installed copy was overwritten. **After copying, check its SHA256 against the evidence value above** (`Get-FileHash <jar> -Algorithm SHA256`) and delete any older same-named ARC JAR: the pre-fix and post-fix builds were both called `dev.8`, and keeping the stale file makes a working change look broken.
+1. Exit the game. Use Acbric API 0.3.7 or a later compatible version. Disable Starting Cities and restart, or keep its JAR outside `mods/`. Install only one ARC version.
+2. Copy `build/libs/ARC-Overhaul-0.1.0-dev.12.jar` to the running copy's `game/mods/`. No installed copy was overwritten. Check its SHA256 against the **dev.12** evidence above (`Get-FileHash <jar> -Algorithm SHA256`) and keep older ARC JARs outside the active MOD folder.
 3. Start a new single-player conquest setup. Scroll its settings list to the bottom and select **ARC Overhaul: Player starting options**, or use **MOD list → ARC Overhaul → Details**.
 4. Edit, Apply, close, then use the native Start button. `-1` preserves that field's vanilla value; fields are independent.
 5. Do the same with the second entry, **ARC Overhaul: AI fleets**; it lists every loaded AI fleet and is described in [AI fleets](README.md#ai-fleets).
