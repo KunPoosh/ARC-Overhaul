@@ -1,7 +1,7 @@
 // ARC 独立构建：仅引用本地框架与自有游戏依赖，不将它们打入 MOD。
 plugins { id 'java' }
 group = 'net.poosh.arc'
-version = '0.1.0-dev.9'
+version = '0.1.0-dev.10'
 
 def frameworkDir = file(findProperty('acbricDir') ?: '../Acbric')
 def apiJar = new File(frameworkDir, 'build/libs/Acbric-1.0-SNAPSHOT-api-mod.jar')
@@ -9,7 +9,7 @@ def apiJar = new File(frameworkDir, 'build/libs/Acbric-1.0-SNAPSHOT-api-mod.jar'
 def gameLibDir = file(findProperty('gameLibDir') ?: new File(frameworkDir, 'libs'))
 def gameA = new File(gameLibDir, 'asplit-A.zip')
 def gameB = new File(gameLibDir, 'asplit-B.zip')
-def loaderLibDir = new File(frameworkDir, 'build/dist/Acbric/loader-libs')
+def loaderLibDir = file(findProperty('loaderLibDir') ?: new File(frameworkDir, 'build/dist/Acbric/loader-libs'))
 
 java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }
 dependencies {

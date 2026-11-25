@@ -22,6 +22,17 @@ AI 舰队在 `WorldMap$2.run` 的舰队取用点上按 ordinal 定位；原生�
 
 后续代码须有中文文件头，用户界面、文档同时支持中英文（跟随游戏语言）。优先公共 API；确需 Mixin 时 remap=false 并精确核对两版描述符。开局值只影响新地图，不能在加载/恢复时重复发钱或改领地。共享值不能直接读取各客户端本地配置；不得绕过框架大厅规则一致性检查。读写存档不代表自动同步。
 
-构建入口 `gradlew.bat build`，可用 `-PacbricDir` 和 `-PgameLibDir` 指定仓库外依赖。框架基线提交 `1be89b2`，不要默认公开分支已包含。集成检查使用 `tests/run_runtime.py --tag NAME --game LABEL=ROOT`，路径及隔离要求见 TESTING。默认 Gradle test 无源码，不算测试通过。
+构建入口 `gradlew.bat build`，可用 `-PacbricDir`、`-PgameLibDir` 和可选的 `-PloaderLibDir` 指定仓库外依赖。框架基线提交 `1be89b2`，不要默认公开分支已包含。集成检查使用 `tests/run_runtime.py --tag NAME --game LABEL=ROOT`，路径及隔离要求见 TESTING。默认 Gradle test 无源码，不算测试通过。
 
 不改写反编译资料，不覆盖用户运行包/存档，不提交游戏文件、反编译源码、私人日志、凭据或本地依赖。`build/` 和运行夹具排除在 Git 外；wrapper JAR 是唯一预期跟踪的二进制构建工具。当前 build 不自动安装到游戏；改名仍保留 `arc_overhaul`、包名及所有存档契约。提交与推送按用户当前授权处理，不自动创建远端或发布。
+
+## 2026-11-25 dev.10 TacticalAI 确定性修复
+
+新增纯规则 `combat/TacticalAIFixes.java` 与窄范围 `mixin/TacticalAIFixesMixin.java`，不复制整套 AI，也不改变候选网格、权重、行动顺序或武器索敌。
+
+- `sideTick` 的两处 `Combat.canPlace` 原本误传当前决策舰船 `ship`。Mixin 暂存取自 `Iterator.next()` 的预备队 `res`，两次重定向都改用它。
+- `move()` 的 `SUDDEN_STORM` 原式因 Java 优先级实际测试“x + 阵营序号是否为 0”。ARC 重定向相关 `getX` 与第 2、3 个 `Math.min(DD)`，按阵营方向计算敌舰和自身的相对位移；外侧 `max` 仍由原版执行。
+- `getDamageQuality` 的纵向边距误用 `ex`。ARC 重定向方法内第 2 个 `StrictMath.min(DD)`，用攻击者 `ey` 与高度重新计算第一个边距。
+- `CRASH_ZONE` 的 `getDamageQuality` 调用误传 `e.flipped` 造成二次翻转。`@ModifyArg` 只把 move 内第 13 次调用的布尔参数改为 `false`。
+
+发行版字节码在两个构建中一致：`move` 有 32 个 `Airship.getX`、4 个 `Math.min(DD)`，第 13/15 个 `getX` 分别位于第 2/3 个 `min` 前；`sideTick` 有 1 个 `Iterator.next` 和 2 个 `canPlace`；`getDamageQuality` 有 3 个 `StrictMath.min`。验证为游戏 1.2.15.2（`bc8de3d7…`）与 1.2.15.3（`a0043b25…`）各 **633 项通过**，共 1,266 项，证据 `build/runtime-tests/tactical-ai-fix-release-2/summary.json`；dev.10 JAR SHA256 `8986f38ec16f618da0c106b426d7fd061f75f5b77b326849c56df6b3bc55d67b`。测试直接调用十个处理器并用未改写归档字节核对落点，但**未启动真实 Combat**；实际移动质量、GPU 战斗与联机未覆盖。
