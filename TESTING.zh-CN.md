@@ -1,15 +1,17 @@
 # ARC Overhaul 开局设置测试手册
 
+dev.10 修复 `TacticalAI` 的四个确定性决策错误：游戏 **1.2.15.2 / 1.2.15.3 各通过 633 项，共 1,266 项**，证据 `build/runtime-tests/tactical-ai-fix-release-2/summary.json`（`v152` = `bc8de3d7…`，`v153` = `a0043b25…`），JAR SHA256 `8986f38ec16f618da0c106b426d7fd061f75f5b77b326849c56df6b3bc55d67b`。测试从发行归档直接解析未经 Mixin 改写的字节码，核对 `sideTick` 的 1 次预备队迭代与 2 次 `canPlace`、`move` 的 32 个 `getX` 和 4 个 `Math.min(DD)` 调用位置，并直接驱动十个注入处理器，验证预备队尺寸、双方风暴方向、纵向距离和撞区朝向。此检查**不启动完整战斗**；实际移动质量、图形战斗和联机仍未验收。
+
 dev.9 新增 T 指令打无武装目标与无武装航母下达 T 指令：游戏 1.2.15.2 / 1.2.15.3 各通过 **606 项**，共 1,212 项（含本分支 feat5 的 15 项载荷摩擦断言），证据 `build/runtime-tests/ordered-target-dev9/summary.json`，JAR SHA256 `f89013758fa04609675cb3057e90c74c86b27493b9360ac8108f0632e2a64d5a`；四个注入落点由解析发行内核字节码断言，另有 34 项断言直接驱动真实内核类上的处理器。静态注入校验 `arc verify` 上次在**同一套 Mixin**（只差版本串）上 15 条注入全部 OK；本次因框架升级到 0.3.5.1、该工具无法物化 kernel view 而未运行。仍未覆盖 `CommandButtonsPanel.draw` 里被重定向那一次调用之外的绘制路径、完整世界生成、图形界面与端到端联机。
 
 2026-09-27 PR #3 / #4 / #5 整合验证：dev.7 同时包含 AI 舰队设置、飞机攻击航点跟随及接地摩擦速度显示。冲突解决保留两项 Mixin 注册及全部测试入口，版本统一为 dev.7，功能源码语义未改。JDK 21 / Acbric API 0.3.3-dev.33 构建成功；游戏 1.2.15.2 / 1.2.14 各通过 529 项，共 1,058 项，证据 `build/runtime-tests/pr3-5-integrated-20260927/summary.json`。舰队登记与部分资源使用测试替身，航点测试直接调用真实注入处理器，未验证完整世界生成、图形战斗、道路/初始资产或端到端联机。未覆盖玩家运行副本。下方各分支早期记录及测试数字为历史。
 
-[English](TESTING.md) · 0.1.0-dev.9 · 2026-09-30
+[English](TESTING.md) · 0.1.0-dev.10 · 2026-11-25
 
 ## 安装与入口
 
 1. 退出游戏，确认 API 至少为 dev.21。停用旧 Starting Cities 并重启，也可将其 JAR 移到 `mods/` 外保留。不要同时装两个 ARC 版本。
-2. 将 `build/libs/ARC-Overhaul-0.1.0-dev.9.jar` 复制到实际运行副本 `game/mods/`。本工程没有自动覆盖运行包。**复制后核对 SHA256 与上面的证据值一致**（`Get-FileHash <jar> -Algorithm SHA256`），并删掉同名旧 ARC JAR：修复前后可能都叫 `dev.8`，只凭文件名会以为改动没生效。
+2. 将 `build/libs/ARC-Overhaul-0.1.0-dev.10.jar` 复制到实际运行副本 `game/mods/`。本工程没有自动覆盖运行包。**复制后核对 SHA256 与上面的证据值一致**（`Get-FileHash <jar> -Algorithm SHA256`），并删掉同名旧 ARC JAR：只凭文件名可能以为改动没生效。
 3. 开始新的单人征服战役，将原生设置列表滚至最底部，点击 **ARC 大修：玩家开局设置**。另一个入口是 **MOD 列表 → ARC Overhaul → 详情**。
 4. 输入、应用、关闭窗口，再点击游戏原来的开始按钮。`-1` 表示该项使用原版，三个字段相互独立。
 5. 同样方式打开第二个入口 **ARC 大修：AI 舰队**；它列出所有已加载的 AI 舰队，语义见 [AI 舰队](README.zh-CN.md#ai-舰队)。

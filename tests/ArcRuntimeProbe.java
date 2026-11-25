@@ -4,6 +4,7 @@ package regression;
 import com.zarkonnen.airships.*;
 import com.zarkonnen.catengine.util.Utils;
 import net.poosh.arc.combat.OrderedTarget;
+import net.poosh.arc.combat.TacticalAIFixes;
 import net.poosh.arc.conquest.*;
 import net.poosh.arc.mixin.*;
 import net.poosh.arc.speed.*;
@@ -609,8 +610,143 @@ public final class ArcRuntimeProbe {
         follow.invoke(crew,16,null,null,false,callback);
         check(field(crew,crewman,"strafeTo")==null,"no aim point is not an error");
     }
+
+    static Field uniqueField(Class<?> type, String suffix) {
+        for (Field field : type.getDeclaredFields()) {
+            if (field.getName().endsWith(suffix)) {
+                field.setAccessible(true);
+                return field;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * TacticalAI 确定性修复：不启动战斗，验证四个注入的落点与处理器行为。
+     *
+     * <p>结构检查限定在发行版原始字节码中：预备队投放有两次 canPlace；Sudden Storm 的第 2、3 个
+     * {@code Math.min(DD)} 之前分别读取敌舰和自身 x；CRASH_ZONE 的第 13 个 getDamageQuality 调用
+     * 前读取敌舰 flipped；纵向距离方法的前三次 StrictMath.min 中第 2 次属于威胁距离。</p>
+     */
+    static void checkTacticalAIFixes() throws Exception {
+        Class<?> ai=Class.forName("com.zarkonnen.airships.TacticalAI");
+        Method remember=handler(ai,"arc$rememberReserve",Iterator.class);
+        Method ground=handler(ai,"arc$placeGroundReserve",Combat.class,Airship.class,List.class,
+            int.class,int.class,int.class,Combat.Side.class);
+        Method flying=handler(ai,"arc$placeFlyingReserve",Combat.class,Airship.class,List.class,
+            int.class,int.class,int.class,Combat.Side.class);
+        Class<?> callbackType=Class.forName("org.spongepowered.asm.mixin.injection.callback.CallbackInfo");
+        Method clear=handler(ai,"arc$clearReserve",callbackType);
+        Method rememberEnemyX=handler(ai,"arc$rememberStormEnemyX",Airship.class);
+        Method rememberSelfX=handler(ai,"arc$rememberStormSelfX",Airship.class);
+        Method stormEnemy=handler(ai,"arc$stormEnemyShift",double.class,double.class);
+        Method stormSelf=handler(ai,"arc$stormSelfShift",double.class,double.class);
+        Method vertical=handler(ai,"arc$verticalEdgeDistance",
+            double.class,double.class,Airship.class,Airship.class,double.class,double.class,boolean.class);
+        Method crash=handler(ai,"arc$crashZoneUsesActualFacing",boolean.class);
+        check(remember!=null&&ground!=null&&flying!=null&&clear!=null&&rememberEnemyX!=null&&rememberSelfX!=null
+            &&stormEnemy!=null&&stormSelf!=null&&vertical!=null&&crash!=null,
+            "real mixin transformation: TacticalAI carries every ARC deterministic-fix handler");
+
+        List<String> side=archiveEvents(ai,"sideTick","()V");
+        check(sitesOf(side,"M java/util/Iterator.next()Ljava/lang/Object;").size()==1,
+            "TacticalAI.sideTick has exactly one reserve iterator advance");
+        check(sitesOf(side,"M com/zarkonnen/airships/Combat.canPlace(Lcom/zarkonnen/airships/Airship;Ljava/util/List;IIILcom/zarkonnen/airships/Combat$Side;)Z").size()==2,
+            "TacticalAI.sideTick has exactly the ground and flying canPlace calls patched by ARC");
+
+        List<String> move=archiveEvents(ai,"move","()V");
+        List<Integer> xs=sitesOf(move,"M com/zarkonnen/airships/Airship.getX()D");
+        List<Integer> mins=sitesOf(move,"M java/lang/Math.min(DD)D");
+        List<Integer> damage=sitesOf(move,
+            "M com/zarkonnen/airships/TacticalAI.getDamageQuality(Lcom/zarkonnen/airships/Airship;Lcom/zarkonnen/airships/Airship;DDZ)D");
+        check(xs.size()==32&&mins.size()==4,
+            "TacticalAI.move has the native 32 getX and 4 Math.min(DD) call sites used by the ARC ordinals ("
+                +xs.size()+"/"+mins.size()+")");
+        check(xs.get(13)<mins.get(2)&&mins.get(2)<xs.get(14),
+            "Sudden Storm enemy min #2 follows the injected Airship.getX #13");
+        check(xs.get(15)<mins.get(3)&&mins.get(3)<xs.get(16),
+            "Sudden Storm self min #3 follows the injected Airship.getX #15");
+        check(damage.size()==13&&"F com/zarkonnen/airships/Airship.flipped".equals(fieldBefore(move,damage.get(12))),
+            "CRASH_ZONE's getDamageQuality #12 is the call immediately carrying e.flipped");
+
+        List<String> quality=archiveEvents(ai,
+            "getDamageQuality",
+            "(Lcom/zarkonnen/airships/Airship;Lcom/zarkonnen/airships/Airship;DDZ)D");
+        check(sitesOf(quality,"M java/lang/StrictMath.min(DD)D").size()==3,
+            "TacticalAI.getDamageQuality has horizontal, vertical and in-loop min call sites");
+
+        check(TacticalAIFixes.stormEnemyX(250.0,0,3000.0)==1250.0
+            &&TacticalAIFixes.stormEnemyX(-250.0,1,3000.0)==-1250.0,
+            "Sudden Storm moves enemies toward the opposite side of the battlefield");
+        check(TacticalAIFixes.stormSelfX(-250.0,0,3000.0)==-1250.0
+            &&TacticalAIFixes.stormSelfX(250.0,1,3000.0)==1250.0,
+            "Sudden Storm moves the caster in the side-relative direction");
+        check(TacticalAIFixes.stormEnemyX(2500.0,0,2600.0)==2600.0,
+            "Sudden Storm keeps the native upper battlefield limit");
+        check(TacticalAIFixes.verticalEdgeDistance(200.0,0.0,100.0,300.0)==100.0,
+            "damage-quality vertical distance uses the attacker's y and height");
+
+        Object aiObject=unsafe(ai);
+        Class<?> physics=Class.forName("com.zarkonnen.airships.PhysicsRect");
+        Field reserveField=uniqueField(ai,"arc$reserveBeingPlaced");
+        Field stormEnemyField=uniqueField(ai,"arc$stormEnemyX");
+        Field stormSelfField=uniqueField(ai,"arc$stormSelfX");
+        check(reserveField!=null&&stormEnemyField!=null&&stormSelfField!=null,
+            "TacticalAI carries ARC's reserve and Sudden Storm state fields");
+        TacticalProbeCombat combat=(TacticalProbeCombat)unsafe(TacticalProbeCombat.class);
+        Airship wrong=(Airship)unsafe(Airship.class),reserve=stubShip(true,false,true);
+        Iterator<Airship> reserveIterator=List.of(reserve).iterator();
+        check(remember.invoke(aiObject,reserveIterator)==reserve&&reserveField.get(aiObject)==reserve,
+            "reserve iterator redirect records the actual unit before canPlace");
+        ground.invoke(aiObject,combat,wrong,new ArrayList<Airship>(),0,0,40,null);
+        check(combat.captured==reserve,"ground reserve deployment checks the reserve footprint, not the current ship");
+        combat.captured=null;
+        flying.invoke(aiObject,combat,wrong,new ArrayList<Airship>(),0,0,40,null);
+        check(combat.captured==reserve,"flying reserve deployment checks the reserve footprint, not the current ship");
+        Object callback=callbackType.getDeclaredConstructor(String.class,boolean.class).newInstance("arc-probe",false);
+        clear.invoke(aiObject,callback);
+        check(reserveField.get(aiObject)==null,"reserve state is cleared at sideTick return");
+
+        Airship enemySource=(Airship)unsafe(Airship.class),selfSource=(Airship)unsafe(Airship.class);
+        set(enemySource,physics,"x",250.0);
+        set(selfSource,physics,"x",-250.0);
+        check((Double)rememberEnemyX.invoke(aiObject,enemySource)==250.0
+            &&stormEnemyField.getDouble(aiObject)==250.0,
+            "enemy getX redirect records the exact Sudden Storm source coordinate");
+        check((Double)rememberSelfX.invoke(aiObject,selfSource)==-250.0
+            &&stormSelfField.getDouble(aiObject)==-250.0,
+            "self getX redirect records the exact Sudden Storm source coordinate");
+
+        Combat stormCombat=(Combat)unsafe(Combat.class);
+        Combat.Side side0=(Combat.Side)unsafe(Combat.Side.class);
+        Combat.Side side1=(Combat.Side)unsafe(Combat.Side.class);
+        stormCombat.sides=new ArrayList<>(List.of(side0,side1));
+        putObject(aiObject,ai,"c",stormCombat);
+        putObject(aiObject,ai,"mySide",side0);
+        stormEnemyField.setDouble(aiObject,250.0);
+        stormSelfField.setDouble(aiObject,-250.0);
+        check((Double)stormEnemy.invoke(aiObject,3000.0,0.0)==1250.0
+            &&(Double)stormSelf.invoke(aiObject,3000.0,0.0)==-1250.0,
+            "injected Sudden Storm handlers use side 0's intended relative movement");
+        putObject(aiObject,ai,"mySide",side1);
+        stormEnemyField.setDouble(aiObject,-250.0);
+        stormSelfField.setDouble(aiObject,250.0);
+        check((Double)stormEnemy.invoke(aiObject,3000.0,0.0)==-1250.0
+            &&(Double)stormSelf.invoke(aiObject,3000.0,0.0)==1250.0,
+            "injected Sudden Storm handlers use side 1's intended relative movement");
+
+        MetricShip attacker=new MetricShip(),defender=new MetricShip();
+        set(attacker,physics,"y",0.0);
+        set(defender,physics,"y",200.0);
+        attacker.y=0.0;attacker.height=100.0;defender.y=200.0;defender.height=100.0;
+        check((Double)vertical.invoke(aiObject,0.0,300.0,attacker,defender,0.0,0.0,false)==100.0,
+            "vertical-distance redirect replaces the native ex-based edge with the correct y-based edge");
+        check(!(Boolean)crash.invoke(aiObject,true),
+            "CRASH_ZONE evaluates enemy fire with its actual facing instead of flipping it twice");
+    }
+
     public static void main(String[] args) throws Exception {
-        for(String name:List.of("WorldMap","WorldMap$2","WorldMap$3","WorldMap$4","GameSetupScreen","CampaignWorld","WorldGenScreen","Crewman")) {
+        for(String name:List.of("WorldMap","WorldMap$2","WorldMap$3","WorldMap$4","GameSetupScreen","CampaignWorld","WorldGenScreen","Crewman","TacticalAI")) {
             Class<?> type=Class.forName("com.zarkonnen.airships."+name);
             check(Arrays.stream(type.getDeclaredMethods()).anyMatch(m->m.getName().contains("arc$")||m.getName().contains("acbric$")),"real mixin transformation: "+name);
         }
@@ -726,6 +862,7 @@ public final class ArcRuntimeProbe {
         checkEffectiveSpeed();
         checkGroundLoad();
         checkAircraftStrafe();
+        checkTacticalAIFixes();
         checkOrderedTarget();
         checkFleetOptions();
         checkFleetWindowShape();
@@ -883,6 +1020,45 @@ public final class ArcRuntimeProbe {
             }
         },0);
         check(!out.isEmpty(),"native "+type.getSimpleName()+"."+method+" bytecode is parsed from the class file");
+        return out;
+    }
+    /** 从运行类路径中的发行 ZIP/JAR 直接读取未经过 Mixin 改写的原始类字节。 */
+    static byte[] archiveClassBytes(Class<?> type) throws Exception {
+        String resource=type.getName().replace('.','/')+".class";
+        List<Path> candidates=new ArrayList<>();
+        for(String entry:System.getProperty("java.class.path").split(java.io.File.pathSeparator)) {
+            try { candidates.add(Path.of(entry)); } catch(RuntimeException ignored) { }
+        }
+        var source=type.getProtectionDomain().getCodeSource();
+        if(source!=null&&source.getLocation()!=null){
+            try { candidates.add(Path.of(source.getLocation().toURI())); } catch(Exception ignored) { }
+        }
+        for(Path path:candidates) {
+            if(!Files.isRegularFile(path)) continue;
+            try(java.util.zip.ZipFile zip=new java.util.zip.ZipFile(path.toFile())) {
+                java.util.zip.ZipEntry item=zip.getEntry(resource);
+                if(item!=null) try(java.io.InputStream in=zip.getInputStream(item)) { return in.readAllBytes(); }
+            }
+        }
+        throw new AssertionError("Cannot find raw game class: "+resource);
+    }
+    /** 与 {@link #events(Class,String,String)} 相同，但只解析发行归档里的原始字节。 */
+    static List<String> archiveEvents(Class<?> type,String method,String descriptor) throws Exception {
+        List<String> out=new ArrayList<>();
+        new ClassReader(archiveClassBytes(type)).accept(new ClassVisitor(Opcodes.ASM9){
+            @Override public MethodVisitor visitMethod(int access,String name,String desc,String signature,String[] exceptions) {
+                if(!name.equals(method)||!desc.equals(descriptor)) return null;
+                return new MethodVisitor(Opcodes.ASM9){
+                    @Override public void visitFieldInsn(int opcode,String owner,String fieldName,String fieldDesc) {
+                        if(opcode==Opcodes.GETFIELD) out.add("F "+owner+"."+fieldName);
+                    }
+                    @Override public void visitMethodInsn(int opcode,String owner,String name,String desc,boolean itf) {
+                        out.add("M "+owner+"."+name+desc);
+                    }
+                };
+            }
+        },0);
+        check(!out.isEmpty(),"raw "+type.getSimpleName()+"."+method+" bytecode is parsed from the game archive");
         return out;
     }
     static List<Integer> sitesOf(List<String> events,String event) {
@@ -1112,5 +1288,20 @@ public final class ArcRuntimeProbe {
         @Override public void iconButton(int x,int y,com.zarkonnen.catengine.Img img,Runnable action,boolean on){
             called=true;enabled=on;
         }
+    }
+    /** 记录 TacticalAI 交给原生 canPlace 的舰船，不再执行真实地形碰撞。 */
+    static class TacticalProbeCombat extends Combat {
+        Airship captured;
+        TacticalProbeCombat(){ super((AirshipGame)null,(TimeOfDay)null); }
+        @Override public boolean canPlace(Airship ship,List<Airship> others,int x,int y,int spacing,Side side){
+            captured=ship;
+            return true;
+        }
+    }
+    /** 固定高度，让纵向距离处理器不依赖舰船网格；纵坐标直接写入原生 PhysicsRect。 */
+    static class MetricShip extends Airship {
+        double y,height;
+        MetricShip(){ super((ShipType)null); }
+        @Override public double getBBHeight(){ return height; }
     }
 }
